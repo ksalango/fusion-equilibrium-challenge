@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: fusion-eq
+Version: 0.1.0
+Summary: NeurIPS 2026 Fusion Equilibrium Challenge - ksalango
+Requires-Python: >=3.11
