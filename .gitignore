@@ -1,0 +1,21 @@
+# environments
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# data & model artifacts — never in the repo
+data/
+*.npz
+*.parquet
+*.pt
+*.pkl
+*.joblib
+
+# secrets — HF tokens must NEVER be committed
+*.token
+.env
+.huggingface/
+
+# macOS noise
+.DS_Store
