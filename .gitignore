@@ -19,3 +19,7 @@ data/
 
 # macOS noise
 .DS_Store
+
+# Private working files
+CLAUDE.md
+internal/
