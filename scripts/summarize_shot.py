@@ -8,7 +8,8 @@ other numeric column is matched by outer length against the time arrays of
 the same shot, and the names of the matching time arrays are reported as
 the candidate time base.
 
-The file is described exactly as shipped. No data fixes are applied.
+The file is described exactly as shipped. No data fixes are applied. Reading
+goes through ``fusion_eq.io.read_table``, the shared loader.
 
 Usage::
 
@@ -25,7 +26,9 @@ from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.parquet as pq
+
+from fusion_eq.io import read_table
+from fusion_eq.qa.inventory import leaf_type
 
 # Columns that carry a time axis. Their lengths define the candidate time
 # bases for every other column of the shot.
@@ -66,13 +69,6 @@ class ColumnSummary:
     outer_len: int | None = None
 
 
-def _leaf_type(arrow_type: pa.DataType) -> pa.DataType:
-    """Returns the innermost element type of a nested list type."""
-    while pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
-        arrow_type = arrow_type.value_type
-    return arrow_type
-
-
 def _unnest(array: pa.Array) -> tuple[list[str], pa.Array]:
     """Flattens a nested list array and records the shape at each level.
 
@@ -109,11 +105,11 @@ def summarize_column(name: str, column: pa.ChunkedArray) -> ColumnSummary:
         The column summary. Numeric statistics ignore NaN and null values.
     """
     scalar = column[0]
-    leaf_type = _leaf_type(column.type)
+    leaf_type_ = leaf_type(column.type)
 
     if pa.types.is_list(column.type) or pa.types.is_large_list(column.type):
         if not scalar.is_valid:
-            return ColumnSummary(name, "null", str(leaf_type), 0, None, None, None, None)
+            return ColumnSummary(name, "null", str(leaf_type_), 0, None, None, None, None)
         outer = scalar.values
         outer_len = len(outer)
         dims, leaf = _unnest(pa.array(outer))
@@ -125,7 +121,7 @@ def summarize_column(name: str, column: pa.ChunkedArray) -> ColumnSummary:
 
     shape = "scalar" if not dims else "(" + ", ".join(dims) + ")"
 
-    if pa.types.is_string(leaf_type) or pa.types.is_large_string(leaf_type):
+    if pa.types.is_string(leaf_type_) or pa.types.is_large_string(leaf_type_):
         values = leaf.to_pylist()
         n_null = sum(v is None for v in values)
         distinct: list[str] = []
@@ -136,7 +132,7 @@ def summarize_column(name: str, column: pa.ChunkedArray) -> ColumnSummary:
                 break
         examples = f"{len(set(values))} distinct: " + ", ".join(distinct)
         return ColumnSummary(
-            name, shape, str(leaf_type), len(values), None, None,
+            name, shape, str(leaf_type_), len(values), None, None,
             n_null / max(len(values), 1), None, examples=examples,
             outer_len=outer_len,
         )
@@ -149,7 +145,7 @@ def summarize_column(name: str, column: pa.ChunkedArray) -> ColumnSummary:
     vmin = float(finite.min()) if finite.size else None
     vmax = float(finite.max()) if finite.size else None
     return ColumnSummary(
-        name, shape, str(leaf_type), n, vmin, vmax, nan_frac, zero_frac,
+        name, shape, str(leaf_type_), n, vmin, vmax, nan_frac, zero_frac,
         outer_len=outer_len,
     )
 
@@ -235,9 +231,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--csv", action="store_true", help="Emit CSV instead of a text table")
     args = parser.parse_args(argv)
 
-    table = pq.read_table(args.path)
-    if table.num_rows != 1:
-        raise SystemExit(f"expected one row (one shot), found {table.num_rows}")
+    table = read_table(args.path)
     summaries = summarize_table(table, args.columns)
     if args.csv:
         print_csv(summaries)

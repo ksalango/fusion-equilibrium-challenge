@@ -1,0 +1,255 @@
+"""Shot file loading shared by every phase.
+
+One challenge Parquet file holds one shot as a single row whose cells are nested
+arrays. This module reads a chosen set of columns, converts the cells to numpy
+arrays, and applies the organizers' data fixes from the starter kit:
+
+- ``fix_d3d_ip_times`` corrects the DIII-D plasma-current time axis per shot.
+- ``align_mast_thomson_core`` drops the uncalibrated MAST Thomson data channel 0.
+
+Both fixes are imported from the starter kit, never reimplemented. Their effect is
+recorded in ``Shot.fixes`` so that quality checks can report what changed.
+
+Raw files are never written to.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Iterable
+
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from fusion_eq import starter_kit
+from fusion_eq.machines import MachineConfig, machine_from_filename
+
+# Columns the Ip time-axis fix reads. Requesting any Ip column loads all three.
+IP_FIX_COLUMNS = ("magnetics_plasma_current_times", "magnetics_plasma_current", "magnetics_time")
+IP_COLUMNS = ("magnetics_plasma_current_times", "magnetics_plasma_current")
+
+# Columns the MAST Thomson alignment fix reads. Requesting any loads all three.
+THOMSON_FIX_COLUMNS = ("thomson_core_R", "thomson_core_Te", "thomson_core_ne")
+
+
+@dataclass
+class Shot:
+    """One shot loaded from a Parquet file, after data fixes.
+
+    Attributes:
+        path: Source file.
+        shot_id: File stem without the machine prefix, for example ``"203702"`` or
+            the hash used in the full release.
+        machine: Machine configuration inferred from the file name.
+        data: Column name to value. Nested cells become numpy arrays; ragged cells
+            become lists of arrays; scalar cells stay Python scalars.
+        fixes: Record of what the data fixes did (see ``apply_fixes``).
+        file_columns: All column names present in the file, whether loaded or not.
+    """
+
+    path: Path
+    shot_id: str
+    machine: MachineConfig
+    data: dict[str, Any] = field(default_factory=dict)
+    fixes: dict[str, Any] = field(default_factory=dict)
+    file_columns: tuple[str, ...] = ()
+
+    def __getitem__(self, column: str) -> Any:
+        return self.data[column]
+
+    def __contains__(self, column: str) -> bool:
+        return column in self.data
+
+    def get(self, column: str, default: Any = None) -> Any:
+        return self.data.get(column, default)
+
+    @property
+    def columns(self) -> list[str]:
+        """Loaded column names."""
+        return list(self.data)
+
+    @property
+    def n_frames(self) -> int:
+        """Number of EFIT timeslices, from ``efit_times``."""
+        return int(len(self.data["efit_times"]))
+
+
+def parse_shot_filename(path: Path | str) -> tuple[MachineConfig, str]:
+    """Splits a shot file name into machine configuration and shot id."""
+    stem = Path(path).stem
+    cfg = machine_from_filename(stem)
+    return cfg, stem[len(cfg.file_prefix):]
+
+
+def file_columns(path: Path | str) -> tuple[str, ...]:
+    """Returns every column name in the file from its metadata, without reading data."""
+    return tuple(pq.ParquetFile(path).schema_arrow.names)
+
+
+def read_table(path: Path | str, columns: Iterable[str] | None = None) -> pa.Table:
+    """Reads the one-row table of a shot file.
+
+    Args:
+        path: Parquet file.
+        columns: Column names to read; all columns when None. Names absent from the
+            file are ignored, so callers can request machine-specific columns freely.
+
+    Returns:
+        The Arrow table, holding exactly one row.
+
+    Raises:
+        ValueError: when the file does not hold exactly one row.
+    """
+    if columns is not None:
+        present = set(file_columns(path))
+        columns = [c for c in dict.fromkeys(columns) if c in present]
+    table = pq.read_table(path, columns=columns)
+    if table.num_rows != 1:
+        raise ValueError(f"{path}: expected one row (one shot), found {table.num_rows}")
+    return table
+
+
+def to_ndarray(cell: pa.Scalar) -> Any:
+    """Converts one Arrow cell to a numpy array.
+
+    Args:
+        cell: Scalar taken from a one-row table column.
+
+    Returns:
+        A numpy array with the nesting levels as axes when every inner list has the
+        same length; a list of per-row conversions when the lengths vary (ragged);
+        the Python value for non-list cells; None for a null cell.
+    """
+    if not isinstance(cell, (pa.ListScalar, pa.LargeListScalar)):
+        return cell.as_py()
+    if not cell.is_valid:
+        return None
+    arr = cell.values
+    shape = [len(arr)]
+    while pa.types.is_list(arr.type) or pa.types.is_large_list(arr.type):
+        lengths = np.diff(np.asarray(arr.offsets.to_numpy(zero_copy_only=False)))
+        if lengths.size and np.any(lengths != lengths[0]):
+            return [to_ndarray(inner) for inner in cell.values]
+        shape.append(int(lengths[0]) if lengths.size else 0)
+        arr = arr.flatten()
+    if pa.types.is_string(arr.type) or pa.types.is_large_string(arr.type):
+        return np.asarray(arr.to_pylist(), dtype=object).reshape(shape)
+    return arr.to_numpy(zero_copy_only=False).reshape(shape)
+
+
+def table_to_arrays(table: pa.Table) -> dict[str, Any]:
+    """Converts every column of a one-row table with ``to_ndarray``."""
+    return {name: to_ndarray(table.column(name)[0]) for name in table.column_names}
+
+
+def apply_fixes(shot: Shot, on_error: str = "raise") -> None:
+    """Applies the organizers' data fixes in place and records what they did.
+
+    Args:
+        shot: Shot whose ``data`` holds the raw columns.
+        on_error: ``"raise"`` propagates a fix failure; ``"record"`` leaves the
+            affected columns raw and stores the message under ``fixes[...]_error``.
+
+    Records in ``shot.fixes``:
+        ``ip_fix_applied`` (bool), ``ip_time_shift_ms`` (float, fixed minus shipped
+        axis origin), ``ip_times_shipped`` (the raw axis in ms) when the Ip columns are
+        loaded; ``thomson_core_fix_applied`` (bool), ``thomson_core_channels_before``
+        and ``..._after`` (int), ``thomson_core_dropped_nan_frac_te`` and ``..._ne``
+        (fraction of NaN in the dropped channel) when the Thomson core columns are
+        loaded.
+    """
+    fixes = starter_kit.data_fixes()
+    data = shot.data
+
+    if all(c in data for c in IP_FIX_COLUMNS):
+        shipped = np.asarray(data["magnetics_plasma_current_times"], dtype=np.float64)
+        try:
+            fixed = np.asarray(fixes.fix_d3d_ip_times(data), dtype=np.float64)
+        except Exception as exc:  # noqa: BLE001 - the error itself is the QA finding
+            if on_error != "record":
+                raise
+            shot.fixes["ip_fix_error"] = f"{type(exc).__name__}: {exc}"
+        else:
+            data["magnetics_plasma_current_times"] = fixed
+            shot.fixes["ip_times_shipped"] = shipped
+            shot.fixes["ip_time_shift_ms"] = float(fixed[0] - shipped[0])
+            shot.fixes["ip_fix_applied"] = bool(fixed[0] != shipped[0])
+
+    if all(c in data for c in THOMSON_FIX_COLUMNS):
+        te_raw = data["thomson_core_Te"]
+        n_before = int(te_raw.shape[1]) if isinstance(te_raw, np.ndarray) and te_raw.ndim == 2 else -1
+        try:
+            r_fixed, te_fixed, ne_fixed = fixes.align_mast_thomson_core(data)
+        except Exception as exc:  # noqa: BLE001
+            if on_error != "record":
+                raise
+            shot.fixes["thomson_core_fix_error"] = f"{type(exc).__name__}: {exc}"
+            shot.fixes["thomson_core_channels_before"] = n_before
+        else:
+            n_after = int(te_fixed.shape[1])
+            shot.fixes["thomson_core_fix_applied"] = n_after != n_before
+            shot.fixes["thomson_core_channels_before"] = n_before
+            shot.fixes["thomson_core_channels_after"] = n_after
+            if n_after != n_before:
+                ne_raw = data["thomson_core_ne"]
+                shot.fixes["thomson_core_dropped_nan_frac_te"] = float(np.isnan(te_raw[:, 0]).mean())
+                shot.fixes["thomson_core_dropped_nan_frac_ne"] = float(np.isnan(ne_raw[:, 0]).mean())
+            data["thomson_core_R"] = r_fixed
+            data["thomson_core_Te"] = te_fixed
+            data["thomson_core_ne"] = ne_fixed
+
+
+def shot_from_table(table: pa.Table, path: Path | str, apply: bool = True,
+                    on_fix_error: str = "raise",
+                    keep: Iterable[str] | None = None) -> Shot:
+    """Builds a ``Shot`` from an already-read table.
+
+    Args:
+        table: One-row table.
+        path: Source file, used for the machine and shot id.
+        apply: Whether to run the data fixes.
+        on_fix_error: Passed to ``apply_fixes``.
+        keep: Columns to keep in ``data``; all table columns when None. Columns read
+            only as fix dependencies are dropped here.
+    """
+    path = Path(path)
+    cfg, shot_id = parse_shot_filename(path)
+    shot = Shot(path=path, shot_id=shot_id, machine=cfg, data=table_to_arrays(table),
+                file_columns=file_columns(path))
+    if apply:
+        apply_fixes(shot, on_error=on_fix_error)
+    if keep is not None:
+        keep = set(keep)
+        shot.data = {k: v for k, v in shot.data.items() if k in keep}
+    return shot
+
+
+def load_shot(path: Path | str, columns: Iterable[str] | None = None,
+              apply: bool = True, on_fix_error: str = "raise") -> Shot:
+    """Loads one shot with the data fixes applied.
+
+    Args:
+        path: Parquet file of the shot.
+        columns: Columns to load; all when None. Columns absent from the file are
+            ignored. Requesting a plasma-current column or a Thomson core column
+            also reads the other columns the corresponding fix needs; those extra
+            columns are not kept unless requested.
+        apply: Whether to apply the data fixes. False returns the file as shipped.
+        on_fix_error: ``"raise"`` or ``"record"``, see ``apply_fixes``.
+
+    Returns:
+        The loaded shot.
+    """
+    if columns is None:
+        return shot_from_table(read_table(path), path, apply, on_fix_error)
+    requested = list(dict.fromkeys(columns))
+    to_read = list(requested)
+    if apply:
+        if any(c in requested for c in IP_COLUMNS):
+            to_read += [c for c in IP_FIX_COLUMNS if c not in to_read]
+        if any(c in requested for c in THOMSON_FIX_COLUMNS):
+            to_read += [c for c in THOMSON_FIX_COLUMNS if c not in to_read]
+    table = read_table(path, to_read)
+    return shot_from_table(table, path, apply, on_fix_error, keep=requested)

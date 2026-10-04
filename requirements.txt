@@ -30,7 +30,7 @@ fonttools==4.63.0
 fqdn==1.5.1
 frozenlist==1.8.0
 fsspec==2026.6.0
--e git+ssh://git@github.com/ksalango/fusion-equilibrium-challenge.git@74b32907afe5ab488a6aaa83bd3bc7ee7767b5cb#egg=fusion_eq
+-e git+ssh://git@github.com/ksalango/fusion-equilibrium-challenge.git@dbbcd35a9b3382e20f5fcdea6626d639f82832f5#egg=fusion_eq
 h11==0.16.0
 hf-xet==1.6.0
 httpcore==1.0.9
@@ -38,6 +38,7 @@ httpx==0.28.1
 huggingface_hub==1.32.0
 idna==3.19
 ImageIO==2.37.4
+iniconfig==2.3.0
 ipykernel==7.3.0
 ipython==9.16.1
 ipython_pygments_lexers==1.1.1
@@ -89,6 +90,7 @@ pexpect==4.9.0
 pillow==12.3.0
 platformdirs==4.11.3
 plotly==6.9.0
+pluggy==1.6.0
 prometheus_client==0.26.0
 prompt_toolkit==3.0.53
 propcache==0.5.4
@@ -99,6 +101,7 @@ pyarrow==25.0.1
 pycparser==3.0
 Pygments==2.21.0
 pyparsing==3.3.2
+pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-json-logger==4.2.0
 PyYAML==6.0.3
