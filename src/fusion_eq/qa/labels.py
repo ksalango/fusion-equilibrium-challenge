@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from fusion_eq import starter_kit
 from fusion_eq.io import Shot
 
 EXPECTED_MAP_SHAPE = (65, 65)
@@ -52,18 +53,27 @@ def _cell_distance(r_idx: int, z_idx: int, grid_r, grid_z, r_axis: float, z_axis
 def check_flux_map(shot: Shot, n_sample: int = 10) -> dict:
     """Check 0.5: shape of ``efit_psirz`` and its indexing against the stored axis.
 
-    The map is read as ``[t, iZ, iR]``. The magnetic axis is the global extremum
-    of ``axis_sign * psi`` (a minimum of psi on DIII-D, a maximum on MAST). For the
-    sampled frames the grid node of that extremum is compared with
-    ``efit_r_axis`` / ``efit_z_axis``. The same distance is also computed for the
-    transposed reading and for the opposite extremum, which tells the two failure
-    modes apart.
+    The map is read as ``[t, iZ, iR]``. Two axis estimates are compared with
+    ``efit_r_axis`` / ``efit_z_axis`` on the sampled frames, both under
+    ``axis_sign * psi`` (the axis is a minimum of psi on DIII-D, a maximum on MAST):
+
+    - the scorer's own method (``fusion_scoring.o_point.find_o_point`` with the
+      machine's envelope mask), the strongest interior local maximum; this is the
+      estimate the fail rule uses;
+    - the global extremum of the whole map, which walks to the grid border on shots
+      where the coil flux at the edge exceeds the plasma flux; a border extremum is
+      reported for review. The global distance is also computed under the transposed
+      reading and for the opposite extremum, which tells those failure modes apart.
 
     Returns:
         ``psi_shape`` (string), ``psi_shape_ok`` (3-D, 65 x 65 maps, one per EFIT
-        frame), ``psi_n_frames_checked``, ``psi_axis_cell_dist_max``,
-        ``psi_axis_cell_dist_median``, ``psi_axis_within_1cell_frac``,
-        ``psi_axis_on_border_frac`` (extremum on the outermost ring),
+        frame), ``psi_n_frames_checked``,
+        ``psi_opoint_cell_dist_max``, ``psi_opoint_cell_dist_median``,
+        ``psi_opoint_within_1cell_frac``, ``psi_opoint_used_local_frac`` (frames where
+        an interior local maximum existed),
+        ``psi_axis_cell_dist_max``, ``psi_axis_cell_dist_median``,
+        ``psi_axis_within_1cell_frac`` (global extremum),
+        ``psi_axis_on_border_frac`` (global extremum on the outermost ring),
         ``psi_axis_transposed_cell_dist_median``, ``psi_axis_opposite_cell_dist_median``.
     """
     psi = shot.get("efit_psirz")
@@ -84,8 +94,10 @@ def check_flux_map(shot: Shot, n_sample: int = 10) -> dict:
     r_axis = np.asarray(shot["efit_r_axis"], dtype=np.float64)
     z_axis = np.asarray(shot["efit_z_axis"], dtype=np.float64)
     sign = shot.machine.axis_sign
+    o_point = starter_kit.scoring().o_point
+    mask = starter_kit.envelope_mask(shot.machine).mask_coarse if psi.shape[1:] == EXPECTED_MAP_SHAPE else None
     frames = sample_frames(min(psi.shape[0], r_axis.size), n_sample)
-    dist, dist_t, dist_opp, border = [], [], [], []
+    dist, dist_t, dist_opp, border, dist_o, used_local = [], [], [], [], [], []
     for k in frames:
         phi = sign * psi[k]
         if not np.isfinite(phi).any():
@@ -97,9 +109,17 @@ def check_flux_map(shot: Shot, n_sample: int = 10) -> dict:
         dist_opp.append(_cell_distance(ir_o, iz_o, grid_r, grid_z, r_axis[k], z_axis[k]))
         n = phi.shape[0]
         border.append(iz in (0, n - 1) or ir in (0, n - 1))
+        _, _, iz_s, ir_s, local = o_point.find_o_point(phi, grid_r, grid_z, mask)
+        dist_o.append(_cell_distance(ir_s, iz_s, grid_r, grid_z, r_axis[k], z_axis[k]))
+        used_local.append(bool(local))
     out["psi_n_frames_checked"] = len(dist)
     if dist:
         d = np.asarray(dist)
+        d_o = np.asarray(dist_o)
+        out["psi_opoint_cell_dist_max"] = float(d_o.max())
+        out["psi_opoint_cell_dist_median"] = float(np.median(d_o))
+        out["psi_opoint_within_1cell_frac"] = float((d_o <= 1.0).mean())
+        out["psi_opoint_used_local_frac"] = float(np.mean(used_local))
         out["psi_axis_cell_dist_max"] = float(d.max())
         out["psi_axis_cell_dist_median"] = float(np.median(d))
         out["psi_axis_within_1cell_frac"] = float((d <= 1.0).mean())

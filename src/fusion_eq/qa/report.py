@@ -21,6 +21,10 @@ EXPECTED_LABELS = {
     "efit_lcfs_n", "efit_lcfs_r", "efit_lcfs_z", "magnetics_dsep", "magnetics_dsep_times",
 }
 EXPECTED_LCFS_PADDING = {"DIII-D": "zero", "MAST": "nan"}
+# Check 0.2 review rules: disagreement between the rule A and rule B shifts, and the
+# breakdown window expected of shots the organizers' fix corrected.
+A_MINUS_B_REVIEW_MS = 10.0
+FIXED_BREAKDOWN_WINDOW_MS = (0.0, 60.0)
 FLAG_CAP = 20
 MACHINES = ("DIII-D", "MAST")
 
@@ -36,6 +40,7 @@ class CheckResult:
     note: str = ""
     details: list[str] = field(default_factory=list)
     flagged: list[str] = field(default_factory=list)
+    reviewed: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -200,35 +205,62 @@ def summarize_ip_fix(df: pd.DataFrame, ctx: RunContext) -> CheckResult:
     if d.empty:
         return CheckResult("0.2", "Ip time axis", "review", "no DIII-D shots with Ip loaded")
     applied = _true(d["ip_fix_applied"])
-    fails = d[_false(_col(d, "ip_covers_efit")) | _true(_col(d, "ip_near_zero"))]
+    aligned = _true(_col(d, "ip_alignment_applied"))
+    fails = d[_false(_col(d, "ip_covers_efit")) | _true(_col(d, "ip_near_zero"))
+              | _true(_col(d, "ip_first_frame_before_breakdown"))]
     details = []
-    for split, sub in d.groupby("split"):
-        details.append(f"- {split}: {_true(sub['ip_fix_applied']).mean():.1%} of {len(sub)} shots corrected")
+    for split, sub in d.groupby("split", observed=True):
+        details.append(f"- {split}: organizers' fix corrected {_true(sub['ip_fix_applied']).mean():.1%} of {len(sub)} shots; "
+                       f"rule B alignment applied to {_true(_col(sub, 'ip_alignment_applied')).mean():.1%}")
     shifts = pd.to_numeric(d.loc[applied, "ip_shift_ms"], errors="coerce").round(2)
-    details.append(f"- Shift applied on corrected shots (ms): {_value_counts(shifts)}")
-    details.append(f"- Breakdown time after fix (ms): {_range(_col(d, 'ip_breakdown_fixed_ms'))}")
-    details.append(f"- Breakdown time on shipped axis, corrected shots (ms): "
+    details.append(f"- Organizers' shift on corrected shots (ms): {_value_counts(shifts)}")
+    details.append(f"- Rule B shift on aligned shots (ms): {_range(_col(d.loc[aligned], 'ip_alignment_shift_ms'))}; "
+                   f"positive on {(pd.to_numeric(_col(d.loc[aligned], 'ip_alignment_shift_ms'), errors='coerce') > 0).mean():.1%}")
+    details.append(f"- Breakdown after the organizers' fix (ms), corrected shots: "
+                   f"{_range(_col(d.loc[applied], 'ip_breakdown_fixed_ms'))}; untouched shots: "
+                   f"{_range(_col(d.loc[~applied], 'ip_breakdown_fixed_ms'))}")
+    details.append(f"- Breakdown on the final axis (ms): {_range(_col(d, 'ip_breakdown_aligned_ms'))}")
+    details.append(f"- Breakdown on the shipped axis (ms), corrected shots: "
                    f"{_range(_col(d.loc[applied], 'ip_breakdown_shipped_ms'))}")
-    details.append(f"- Breakdown time on shipped axis, untouched shots (ms): "
-                   f"{_range(_col(d.loc[~applied], 'ip_breakdown_shipped_ms'))}")
-    details.append(f"- Median |Ip| at EFIT frames after fix (kA): {_range(_col(d, 'ip_median_abs_efit_ka'))}")
-    details.append(f"- Median |Ip| at EFIT frames on shipped axis (kA): "
-                   f"{_range(_col(d, 'ip_median_abs_efit_shipped_ka'))}")
+    details.append(f"- Median |Ip| at EFIT frames, final axis (kA): {_range(_col(d, 'ip_median_abs_efit_ka'))}; "
+                   f"shipped axis: {_range(_col(d, 'ip_median_abs_efit_shipped_ka'))}")
     details.append(f"- Ratio median |Ip| over p99.5 |Ip|: {_range(_col(d, 'ip_median_over_p995'))}")
+    details.append(f"- |Ip| at the first EFIT frame over p99.5 |Ip|: {_range(_col(d, 'ip_first_over_p995'), '.3f')}")
+    details.append(f"- First EFIT frame minus breakdown (ms): {_range(_col(d, 'ip_breakdown_to_first_frame_ms'))}; "
+                   f"negative on {_true(_col(d, 'ip_first_frame_before_breakdown')).sum()} shots")
     details.append(f"- 99.5th percentile |Ip| (kA): {_range(_col(d, 'ip_p995_abs_ka'))}")
-    details.append(f"- Fixed axis covers the EFIT window: {_true(_col(d, 'ip_covers_efit')).mean():.1%}")
-    errors = _col(d, "ip_fix_error").dropna()
-    if not errors.empty:
-        details.append(f"- Fix raised on {len(errors)} shots")
+    details.append(f"- Final axis covers the EFIT window: {_true(_col(d, 'ip_covers_efit')).mean():.1%}")
+    anchor = pd.to_numeric(_col(d, "ip_sol_anchor_ms"), errors="coerce")
+    a_minus_b = pd.to_numeric(_col(d, "ip_a_minus_b_ms"), errors="coerce")
+    if anchor.notna().any():
+        details.append(f"- Rule A diagnostic: solenoid swing-down anchor (ms) {_range(anchor)}; lag to fixed breakdown "
+                       f"{_range(_col(d, 'ip_lag_a_ms'))}; A minus B shift (ms) {_range(a_minus_b)}; "
+                       f"|A minus B| above {A_MINUS_B_REVIEW_MS:g} ms on {(a_minus_b.abs() > A_MINUS_B_REVIEW_MS).sum()} shots; "
+                       f"no anchor on {int(anchor.isna().sum())} shots")
+    for key in ("ip_fix_error", "ip_alignment_error"):
+        errors = _col(d, key).dropna()
+        if not errors.empty:
+            details.append(f"- {key} on {len(errors)} shots: {_value_counts(errors, 3)}")
     m = df[(df["machine"] == "MAST") & _col(df, "ip_median_abs_efit_ka").notna()]
     if not m.empty:
         details.append(f"- MAST ({len(m)} shots): Ip covers EFIT window {_true(m['ip_covers_efit']).mean():.1%}; "
                        f"median |Ip| at EFIT frames (kA): {_range(m['ip_median_abs_efit_ka'])}; "
+                       f"first-frame ratio {_range(_col(m, 'ip_first_over_p995'), '.3f')}; "
                        f"Ip NaN count: {_range(_col(m, 'ip_n_nan'), '.0f')}")
-    flagged = _flags(fails, "Ip does not cover the EFIT window or reads near zero after the fix")
+
+    flagged = _flags(fails, "Ip misses the EFIT window, reads near zero, or the first EFIT frame precedes breakdown")
+    lo, hi = FIXED_BREAKDOWN_WINDOW_MS
+    fixed_breakdown = pd.to_numeric(_col(d, "ip_breakdown_fixed_ms"), errors="coerce")
+    reviewed = _flags(d[anchor.notna() & (a_minus_b.abs() > A_MINUS_B_REVIEW_MS)],
+                      f"rule A and rule B shifts differ by more than {A_MINUS_B_REVIEW_MS:g} ms")
+    if "ip_sol_anchor_ms" in d.columns:
+        reviewed += _flags(d[anchor.isna()], "no solenoid swing-down anchor found")
+    reviewed += _flags(d[applied & ((fixed_breakdown < lo) | (fixed_breakdown > hi))],
+                       f"organizer-fixed shot with breakdown outside {lo:g} to {hi:g} ms")
     status = "fail" if flagged else "pass"
-    headline = f"{applied.mean():.1%} of {len(d)} DIII-D shots corrected; {len(fails)} shot(s) fail"
-    return CheckResult("0.2", "Ip time axis", status, headline, "", details, flagged)
+    headline = (f"{applied.mean():.1%} of {len(d)} DIII-D shots corrected by the organizers' fix, "
+                f"{aligned.mean():.1%} aligned by rule B; {len(fails)} shot(s) fail; {len(reviewed)} for review")
+    return CheckResult("0.2", "Ip time axis", status, headline, "", details, flagged, reviewed)
 
 
 # ----------------------------------------------------------------------------- 0.3
@@ -291,22 +323,29 @@ def summarize_flux_map(df: pd.DataFrame, ctx: RunContext) -> CheckResult:
     if d.empty:
         return CheckResult("0.5", "Flux map indexing", "review", "no shots with flux maps loaded")
     shape_bad = d[_false(d["psi_shape_ok"])]
-    within = pd.to_numeric(_col(d, "psi_axis_within_1cell_frac"), errors="coerce")
-    axis_bad = d[within.notna() & (within < 1.0)]
+    within_o = pd.to_numeric(_col(d, "psi_opoint_within_1cell_frac"), errors="coerce")
+    axis_bad = d[within_o.notna() & (within_o < 1.0)]
+    border = pd.to_numeric(_col(d, "psi_axis_on_border_frac"), errors="coerce")
+    on_border = d[border.notna() & (border > 0)]
     flagged = _flags(shape_bad, "psi shape is not [n_frames, 65, 65]")
-    flagged += [f"{r.split}/{r.shot}: extremum more than one cell from the stored axis on "
-                f"{1 - r.psi_axis_within_1cell_frac:.0%} of sampled frames" for r in axis_bad.itertuples()]
+    flagged += [f"{r.split}/{r.shot}: scorer O-point more than one cell from the stored axis on "
+                f"{1 - r.psi_opoint_within_1cell_frac:.0%} of sampled frames" for r in axis_bad.itertuples()]
+    reviewed = [f"{r.split}/{r.shot}: global extremum on the grid border on {r.psi_axis_on_border_frac:.0%} "
+                f"of sampled frames (O-point max distance {r.psi_opoint_cell_dist_max:.2f} cells)"
+                for r in on_border.itertuples()]
     details = [f"- Shapes: {_value_counts(d['psi_shape'].str.replace(r'^\(\d+, ', '(T, ', regex=True))}"]
     for machine, sub in _by_machine(d):
-        details.append(f"- {machine} ({len(sub)} shots): cell distance, conventional reading, per-shot max: "
-                       f"{_range(_col(sub, 'psi_axis_cell_dist_max'))}; "
+        details.append(f"- {machine} ({len(sub)} shots): scorer O-point cell distance, per-shot max: "
+                       f"{_range(_col(sub, 'psi_opoint_cell_dist_max'))}; interior local maximum found on "
+                       f"{_range(_col(sub, 'psi_opoint_used_local_frac'), '.2f')} of frames; "
+                       f"global extremum cell distance, per-shot max: {_range(_col(sub, 'psi_axis_cell_dist_max'))}; "
+                       f"global extremum on the border: {int((pd.to_numeric(_col(sub, 'psi_axis_on_border_frac'), errors='coerce') > 0).sum())} shots; "
                        f"transposed reading median: {_range(_col(sub, 'psi_axis_transposed_cell_dist_median'))}; "
-                       f"opposite extremum median: {_range(_col(sub, 'psi_axis_opposite_cell_dist_median'))}; "
-                       f"extremum on grid border: {_range(_col(sub, 'psi_axis_on_border_frac'), '.2f')}")
+                       f"opposite extremum median: {_range(_col(sub, 'psi_axis_opposite_cell_dist_median'))}")
     status = "pass" if not flagged else "fail"
-    headline = (f"{len(shape_bad)} shape failures; {len(axis_bad)} shots with the extremum "
-                f"more than one cell from the axis")
-    return CheckResult("0.5", "Flux map indexing", status, headline, "", details, flagged)
+    headline = (f"{len(shape_bad)} shape failures; {len(axis_bad)} shots with the scorer O-point more than one "
+                f"cell from the axis; {len(on_border)} shots with a border extremum for review")
+    return CheckResult("0.5", "Flux map indexing", status, headline, "", details, flagged, reviewed)
 
 
 # ----------------------------------------------------------------------------- 0.10
@@ -675,6 +714,10 @@ def render_report(results: list[CheckResult], run_info: dict, df: pd.DataFrame) 
             lines.append("")
             lines.append(f"Flagged shots ({len(r.flagged)}, showing up to {FLAG_CAP}; the full list is in qa_per_shot.parquet):")
             lines += [f"- {f}" for f in r.flagged[:FLAG_CAP]]
+        if r.reviewed:
+            lines.append("")
+            lines.append(f"Shots for review ({len(r.reviewed)}, showing up to {FLAG_CAP}):")
+            lines += [f"- {f}" for f in r.reviewed[:FLAG_CAP]]
         lines.append("")
     if errors:
         lines += ["## Errors", ""]

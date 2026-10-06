@@ -46,13 +46,15 @@ def padded(rows: list[np.ndarray], width: int, pad_value: float) -> np.ndarray:
     return out
 
 
-def make_d3d_shot(n_frames: int = 12, ip_fix_needed: bool = True) -> dict:
+def make_d3d_shot(n_frames: int = 12, ip_fix_needed: bool = True, breakdown_ms: float = 10.0) -> dict:
     """Synthetic DIII-D shot with labels.
 
     Args:
         n_frames: Number of EFIT frames (20 ms cadence from 300 ms).
         ip_fix_needed: When True the shipped Ip axis is the wrong one (as on 69
             percent of shots); when False it already starts at the magnetics origin.
+        breakdown_ms: Time on the correct axis at which Ip rises from the noise floor.
+            The solenoid swing-down is always at 0 ms, so this also sets the lag.
     """
     efit_times = 300.0 + 20.0 * np.arange(n_frames)
     grid_r = np.linspace(0.84, 2.54, N_GRID)
@@ -66,9 +68,18 @@ def make_d3d_shot(n_frames: int = 12, ip_fix_needed: bool = True) -> dict:
     magnetics_time = D3D_MAGNETICS_ORIGIN_MS + 2.0 * np.arange(12_001)      # to 20 s, 2 ms step
     in_shot = (magnetics_time > 0) & (magnetics_time < 5000)
     ip_fixed_axis = D3D_MAGNETICS_ORIGIN_MS + 0.5 * np.arange(30_719)
-    ip = np.where((ip_fixed_axis > 10) & (ip_fixed_axis < 4500), 1000.0, 0.0).astype(np.float32)
+    ip = np.where((ip_fixed_axis > breakdown_ms) & (ip_fixed_axis < 4500), 1000.0, 0.0).astype(np.float32)
     ip += np.float32(2.0) * (np.arange(ip.size) % 2).astype(np.float32)      # 2 kA noise floor
     ip_times = (D3D_IP_SHIPPED_ORIGIN_MS + 0.5 * np.arange(30_719)) if ip_fix_needed else ip_fixed_axis
+    # Solenoid: pre-charge ramp from -800 ms to a 40 kA plateau, swing-down starting at 0 ms
+    # (falling 1.5 kA/ms to -35 kA by 50 ms), hold, then zero after the shot.
+    ecoila = np.zeros_like(magnetics_time)
+    ramp = (magnetics_time >= -800) & (magnetics_time < -100)
+    ecoila[ramp] = 40.0 * (magnetics_time[ramp] + 800) / 700
+    ecoila[(magnetics_time >= -100) & (magnetics_time <= 0)] = 40.0
+    fall = (magnetics_time > 0) & (magnetics_time <= 50)
+    ecoila[fall] = 40.0 - 1.5 * magnetics_time[fall]
+    ecoila[(magnetics_time > 50) & (magnetics_time < 5000)] = -35.0
 
     ts_core_times = -1500.0 + 4.0 * np.arange(3600)
     n_core = 6
@@ -101,7 +112,7 @@ def make_d3d_shot(n_frames: int = 12, ip_fix_needed: bool = True) -> dict:
         "magnetics_time": magnetics_time.astype(np.float32),
         "magnetics_plasma_current": ip,
         "magnetics_plasma_current_times": ip_times.astype(np.float32),
-        "magnetics_ECOILA": np.where(in_shot, 30.0, 0.0),
+        "magnetics_ECOILA": ecoila,
         "magnetics_bcoil": np.where(in_shot, -117.0, 0.0),
         "thomson_core_times": ts_core_times,
         "thomson_core_Te": te_core,

@@ -185,6 +185,23 @@ All three samples are in the affected group, so the samples give no example of a
 shot. The shift equals `magnetics_time[0] - ipt[0]` = -4010.75 - (-858.19). The corrected axis
 then spans -4011 to 11348 ms and still covers the full EFIT window (260 to 3700 ms).
 
+Full-dataset QA (October 4, 2026, 7,915 DIII-D shots): the shots the helper leaves untouched
+are the 2 kHz `magnetics_time` population (about 2,400 shots, 0.5 ms step; the remaining shots
+record at 20 kHz, 0.05 ms step). After the helper, Ip breakdown sits at a median of 14.9 ms on
+the 20 kHz shots and around 190 ms on the 2 kHz shots, so the two populations disagree by an
+axis offset, not physics. One 2 kHz shot (21f23b2392) failed check 0.2 with the plasma current
+reaching the EFIT frames at under 10 percent of its peak.
+
+Project rule (applied by `fusion_eq.io.load_shot` after the helper, `fusion_eq/ip_alignment.py`):
+for a DIII-D shot the helper leaves untouched, shift the Ip time axis so that breakdown, under
+the helper's own definition (first sample with |Ip| above 10 percent of the shot's 99.5th
+percentile), falls at 14.9 ms, the 20 kHz median. The target is a hard-coded constant. The shift
+and the breakdown before and after are recorded in `Shot.fixes`; `align_ip=False` disables the
+rule. A diagnostic anchor on the central-solenoid swing-down (the time `magnetics_ECOILA`
+leaves its pre-charge plateau, near 0 ms; on the sample shots 0.6 to 1.2 ms with a lag of 9 to
+13 ms to breakdown) is reported by QA check 0.2 against the breakdown rule. The reference
+anchor is 1.5 ms, the 20 kHz median from the full run.
+
 ### 4.2 MAST Thomson core channel offset
 
 `thomson_core_R` has 130 entries, `thomson_core_Te` and `thomson_core_ne` have 131 channels.
@@ -273,9 +290,11 @@ Contradictions are recorded with evidence and left unresolved.
    between computed coil flux and ψ outside the plasma should be 1 under the right unit.
 2. ECOILA turn convention. README states the EFIT model uses 48 single-turn elements over the
    same envelope and a second unshipped group ECOILB. Treat its scale as one number to fit.
-3. What the unaffected 31 percent of DIII-D shots look like for the Ip fix. All three samples are
-   affected, so the QA pass must confirm that the helper leaves the correct-axis shots untouched
-   and report the split on the full training set.
+3. Resolved in part by the QA run: the unaffected 31 percent of DIII-D shots are the 2 kHz
+   magnetics population and their Ip axis is late by about 175 ms against the 20 kHz shots.
+   The project aligns them to a breakdown at 14.9 ms (section 4.1). Still open: whether the
+   solenoid swing-down anchor agrees with that rule across the full set, and the per-shot
+   spread of breakdown within the 20 kHz group.
 4. Meaning of the -1 sentinel and the NaN in MAST `magnetics_dsep` (D6). Only relevant for
    analysis, since the column is a label.
 5. Whether the DIII-D all-zero Thomson time slices are absent laser pulses (regular pattern) or

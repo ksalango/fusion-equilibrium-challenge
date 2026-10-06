@@ -23,7 +23,7 @@ from fusion_eq.qa.report import RunContext, render_report, summarize
 from fusion_eq.qa.run import rows_to_frame, run_shot
 from fusion_eq.qa.scorer_check import check_against_scorer
 from fusion_eq.qa.thomson import check_thomson_alignment, check_thomson_missing
-from tests.conftest import drop_labels, make_d3d_shot, make_mast_shot, write_shot
+from tests.conftest import D3D_MAGNETICS_ORIGIN_MS, drop_labels, make_d3d_shot, make_mast_shot, write_shot
 
 
 def load(tmp_path, shot_dict: dict, name: str = "d3d_shot_1.parquet", columns=None) -> io.Shot:
@@ -61,35 +61,69 @@ def test_inventory_fails_on_corrupt_file(tmp_path):
 
 
 # ----------------------------------------------------------------------------- 0.2
+IP_CHECK_COLUMNS = ["magnetics_plasma_current", "magnetics_plasma_current_times", "magnetics_time",
+                    "magnetics_ECOILA", "efit_times"]
+
+
 def test_ip_fix_affected_shot_passes(tmp_path, starter):
-    shot = load(tmp_path, make_d3d_shot(ip_fix_needed=True),
-                columns=["magnetics_plasma_current", "magnetics_plasma_current_times", "magnetics_time", "efit_times"])
+    shot = load(tmp_path, make_d3d_shot(ip_fix_needed=True), columns=IP_CHECK_COLUMNS)
     out = check_ip_time_axis(shot)
-    assert out["ip_fix_applied"] is True
-    assert out["ip_shift_ms"] == pytest.approx(-3152.56, abs=0.01)
-    assert out["ip_breakdown_shipped_ms"] > 1000 and -500 <= out["ip_breakdown_fixed_ms"] <= 1000
+    assert out["ip_fix_applied"] is True and out["ip_alignment_applied"] is False
+    assert out["ip_shift_ms"] == pytest.approx(-3152.56, abs=0.01) and out["ip_alignment_shift_ms"] == 0.0
+    assert out["ip_breakdown_shipped_ms"] > 1000 and out["ip_breakdown_fixed_ms"] == pytest.approx(10.25, abs=1e-3)
+    assert out["ip_breakdown_aligned_ms"] == out["ip_breakdown_fixed_ms"]
     assert out["ip_covers_efit"] is True and out["ip_near_zero"] is False
     assert out["ip_median_abs_efit_ka"] == pytest.approx(1001, abs=2)
     assert out["ip_median_abs_efit_shipped_ka"] < 5
     assert 0.9 < out["ip_median_over_p995"] <= 1.0
+    assert out["ip_first_over_p995"] == pytest.approx(1.0, abs=0.01)
+    assert out["ip_breakdown_to_first_frame_ms"] == pytest.approx(300 - 10.25, abs=1e-3)
+    assert out["ip_first_frame_before_breakdown"] is False
+    assert 0.0 <= out["ip_sol_anchor_ms"] <= 2.0 and out["ip_lag_a_ms"] == pytest.approx(10.25 - out["ip_sol_anchor_ms"], abs=1e-3)
+    assert abs(out["ip_a_minus_b_ms"]) < 2.0
 
 
-def test_ip_fix_unaffected_shot_kept(tmp_path, starter):
-    shot = load(tmp_path, make_d3d_shot(ip_fix_needed=False),
-                columns=["magnetics_plasma_current", "magnetics_plasma_current_times", "magnetics_time", "efit_times"])
+def test_ip_untouched_shot_is_aligned_by_rule_b(tmp_path, starter):
+    shot = load(tmp_path, make_d3d_shot(ip_fix_needed=False, breakdown_ms=250.0), columns=IP_CHECK_COLUMNS)
     out = check_ip_time_axis(shot)
     assert out["ip_fix_applied"] is False and out["ip_shift_ms"] == 0.0
-    assert out["ip_near_zero"] is False
+    assert out["ip_alignment_applied"] is True
+    assert out["ip_breakdown_fixed_ms"] == pytest.approx(250.25, abs=1e-3)
+    assert out["ip_alignment_shift_ms"] == pytest.approx(14.9 - 250.25, abs=1e-3)
+    assert out["ip_breakdown_aligned_ms"] == pytest.approx(14.9)
+    assert out["ip_shift_b_ms"] == pytest.approx(out["ip_alignment_shift_ms"])
+    assert out["ip_near_zero"] is False and out["ip_first_frame_before_breakdown"] is False
+
+
+def test_ip_first_frame_before_breakdown_fails(tmp_path, starter):
+    d = make_d3d_shot(ip_fix_needed=True)
+    d["efit_times"] = d["efit_times"] - 295.0              # first frame at 5 ms, breakdown at 10.25 ms
+    d["magnetics_dsep_times"] = d["efit_times"].astype(np.float32)
+    shot = load(tmp_path, d, columns=IP_CHECK_COLUMNS)
+    out = check_ip_time_axis(shot)
+    assert out["ip_breakdown_to_first_frame_ms"] < 0 and out["ip_first_frame_before_breakdown"] is True
+    assert out["ip_first_over_p995"] < 0.1
 
 
 def test_ip_near_zero_fails_when_plasma_misses_efit_window(tmp_path, starter):
-    d = make_d3d_shot(ip_fix_needed=False)
-    axis = d["magnetics_plasma_current_times"].astype(np.float64)
+    # Organizer-fixed shot (so rule B leaves it alone) whose plasma sits after the EFIT window.
+    d = make_d3d_shot(ip_fix_needed=True)
+    axis = D3D_MAGNETICS_ORIGIN_MS + 0.5 * np.arange(d["magnetics_plasma_current"].size)
     d["magnetics_plasma_current"] = np.where((axis > 6000) & (axis < 9000), 1000.0, 0.0).astype(np.float32)
-    shot = load(tmp_path, d, columns=["magnetics_plasma_current", "magnetics_plasma_current_times",
-                                      "magnetics_time", "efit_times"])
+    shot = load(tmp_path, d, columns=IP_CHECK_COLUMNS)
     out = check_ip_time_axis(shot)
+    assert out["ip_fix_applied"] is True and out["ip_alignment_applied"] is False
     assert out["ip_near_zero"] is True and out["ip_median_over_p995"] < 0.1
+
+
+def test_ip_rule_a_disagreement_is_measured(tmp_path, starter):
+    d = make_d3d_shot(ip_fix_needed=True)
+    shifted = np.roll(d["magnetics_ECOILA"], 10)            # solenoid swing 20 ms later (2 ms magnetics step)
+    d["magnetics_ECOILA"] = shifted
+    shot = load(tmp_path, d, columns=IP_CHECK_COLUMNS)
+    out = check_ip_time_axis(shot)
+    assert out["ip_sol_anchor_ms"] == pytest.approx(20.0, abs=2.5)
+    assert out["ip_a_minus_b_ms"] > 10.0
 
 
 def test_ip_check_on_mast_uses_magnetics_time(tmp_path, starter):
@@ -231,7 +265,10 @@ def test_flux_map_indexing_passes(tmp_path, starter):
     for shot_dict, name in ((make_d3d_shot(), "d3d_shot_1.parquet"), (make_mast_shot(), "mast_shot_1.parquet")):
         out = check_flux_map(load(tmp_path, shot_dict, name))
         assert out["psi_shape_ok"] is True
+        assert out["psi_opoint_within_1cell_frac"] == 1.0 and out["psi_opoint_cell_dist_max"] <= 1.0
+        assert out["psi_opoint_used_local_frac"] == 1.0
         assert out["psi_axis_within_1cell_frac"] == 1.0 and out["psi_axis_cell_dist_max"] <= 1.0
+        assert out["psi_axis_on_border_frac"] == 0.0
         assert out["psi_axis_opposite_cell_dist_median"] > 5
 
 
@@ -239,12 +276,23 @@ def test_flux_map_detects_transposition_and_bad_shape(tmp_path, starter):
     d = make_d3d_shot()
     d["efit_psirz"] = np.transpose(d["efit_psirz"], (0, 2, 1))
     out = check_flux_map(load(tmp_path, d))
+    assert out["psi_opoint_within_1cell_frac"] < 1.0 and out["psi_opoint_cell_dist_max"] > 1.0
     assert out["psi_axis_within_1cell_frac"] < 1.0
     assert out["psi_axis_transposed_cell_dist_median"] < out["psi_axis_cell_dist_median"]
     d = make_d3d_shot()
     d["efit_psirz"] = d["efit_psirz"][:, :64, :64]
     out = check_flux_map(load(tmp_path, d, "d3d_shot_2.parquet"))
     assert out["psi_shape_ok"] is False
+
+
+def test_flux_map_border_extremum_is_review_not_fail(tmp_path, starter):
+    # A strong coil-like flux at a grid corner: the global minimum of psi (DIII-D convention)
+    # walks to the border while the scorer's interior O-point stays at the plasma centre.
+    d = make_d3d_shot()
+    d["efit_psirz"][:, 0, 0] = -5.0
+    out = check_flux_map(load(tmp_path, d))
+    assert out["psi_axis_on_border_frac"] == 1.0 and out["psi_axis_within_1cell_frac"] == 0.0
+    assert out["psi_opoint_within_1cell_frac"] == 1.0 and out["psi_opoint_cell_dist_max"] <= 1.0
 
 
 # ----------------------------------------------------------------------------- 0.6
@@ -381,3 +429,40 @@ def test_summarize_flags_failures(tmp_path, starter):
     assert results["0.11"].status == "fail" and results["0.11"].flagged
     assert results["0.12"].status == "fail"            # same shot id in two splits
     assert results["0.1"].status == "fail"             # full run with wrong counts
+
+
+def test_summarize_flux_map_fail_and_review_rules(tmp_path, starter):
+    border = make_d3d_shot()
+    border["efit_psirz"][:, 0, 0] = -5.0
+    transposed = make_d3d_shot()
+    transposed["efit_psirz"] = np.transpose(transposed["efit_psirz"], (0, 2, 1))
+    rows = [run_shot(write_shot(tmp_path / "d3d_shot_border.parquet", border), "diii_d_train"),
+            run_shot(write_shot(tmp_path / "d3d_shot_good.parquet", make_d3d_shot()), "diii_d_train")]
+    r = {r.check_id: r for r in summarize(rows_to_frame(rows), RunContext(False, ("diii_d_train",)))}["0.5"]
+    assert r.status == "pass" and not r.flagged
+    assert len(r.reviewed) == 1 and "/border:" in r.reviewed[0]
+    rows.append(run_shot(write_shot(tmp_path / "d3d_shot_transposed.parquet", transposed), "diii_d_train"))
+    r = {r.check_id: r for r in summarize(rows_to_frame(rows), RunContext(False, ("diii_d_train",)))}["0.5"]
+    assert r.status == "fail" and len(r.flagged) == 1 and "/transposed:" in r.flagged[0]
+
+
+def test_summarize_ip_fail_and_review_rules(tmp_path, starter):
+    early_frames = make_d3d_shot(ip_fix_needed=True)
+    early_frames["efit_times"] = early_frames["efit_times"] - 295.0
+    early_frames["magnetics_dsep_times"] = early_frames["efit_times"].astype(np.float32)
+    late_anchor = make_d3d_shot(ip_fix_needed=True)
+    late_anchor["magnetics_ECOILA"] = np.roll(late_anchor["magnetics_ECOILA"], 10)
+    late_fixed_breakdown = make_d3d_shot(ip_fix_needed=True, breakdown_ms=120.0)
+    no_anchor = make_d3d_shot(ip_fix_needed=True)
+    no_anchor["magnetics_ECOILA"][:] = 0.0
+    rows = [run_shot(write_shot(tmp_path / f"d3d_shot_{i}.parquet", d), "diii_d_train")
+            for i, d in enumerate([early_frames, late_anchor, late_fixed_breakdown, no_anchor, make_d3d_shot(ip_fix_needed=False)])]
+    r = {r.check_id: r for r in summarize(rows_to_frame(rows), RunContext(False, ("diii_d_train",)))}["0.2"]
+    assert r.status == "fail"
+    assert len(r.flagged) == 1 and "/0:" in r.flagged[0]                       # first frame before breakdown
+    reasons = {f.split(": ", 1)[1] for f in r.reviewed}
+    assert any("differ by more than" in x for x in reasons)
+    assert any("no solenoid" in x for x in reasons)
+    assert any("outside 0 to 60 ms" in x for x in reasons)
+    assert sum("/1:" in f for f in r.reviewed) == 1 and sum("/2:" in f for f in r.reviewed) == 1
+    assert sum("/3:" in f for f in r.reviewed) == 1 and not any("/4:" in f for f in r.reviewed)

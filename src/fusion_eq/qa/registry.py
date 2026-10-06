@@ -42,7 +42,8 @@ class Check:
 
 CHECKS: tuple[Check, ...] = (
     Check("0.2", "Ip time axis", check_ip_time_axis,
-          ("magnetics_plasma_current", "magnetics_plasma_current_times", "magnetics_time", "efit_times"),
+          ("magnetics_plasma_current", "magnetics_plasma_current_times", "magnetics_time", "magnetics_ECOILA",
+           "efit_times"),
           ("magnetics_plasma_current", "efit_times")),
     Check("0.3", "MAST Thomson alignment", check_thomson_alignment,
           ("thomson_core_R", "thomson_core_Te", "thomson_core_ne"),

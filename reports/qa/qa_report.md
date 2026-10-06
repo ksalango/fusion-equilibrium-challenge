@@ -1,6 +1,6 @@
 # QA report
 
-Run at 2026-10-04T21:45:47+00:00 on commit dbbcd35a9b3382e20f5fcdea6626d639f82832f5 (starter kit 5b467988d2e5f28e20be490a926d0a71649de28d), runtime 89 s.
+Run at 2026-10-06T00:00:55+00:00 on commit cd19432ce6f2c3f84b3329777e047a9ab9360663 (starter kit 5b467988d2e5f28e20be490a926d0a71649de28d), runtime 102 s.
 Arguments: `--out reports/qa`.
 Shots per split: diii_d_public_test: 874, diii_d_train: 7041, mast_public_test: 1206, mast_samples: 3.
 Shots with at least one error: 0.
@@ -12,10 +12,10 @@ Shots with at least one error: 0.
 | 0.1 | File inventory | pass | diii_d_public_test: 874, diii_d_train: 7041, mast_public_test: 1206, mast_samples: 3 |  |
 | 0.12 | Split integrity | pass | 0 shot ids shared between splits |  |
 | 0.14 | Column sets | review | DIII-D label set matches the expected 11 columns |  |
-| 0.2 | Ip time axis | fail | 69.7% of 7915 DIII-D shots corrected; 1 shot(s) fail |  |
+| 0.2 | Ip time axis | pass | 69.7% of 7915 DIII-D shots corrected by the organizers' fix, 30.3% aligned by rule B; 0 shot(s) fail; 135 for review |  |
 | 0.3 | MAST Thomson alignment | review | fix applied on 100.0% of 1209 MAST shots |  |
-| 0.4 | Current units | review | DIII-D Ip p99 |value| median 1059; MAST Ip p99 |value| median 751.4 |  |
-| 0.5 | Flux map indexing | fail | 0 shape failures; 40 shots with the extremum more than one cell from the axis |  |
+| 0.4 | Current units | review | DIII-D Ip p99 |value| median 1060; MAST Ip p99 |value| median 751.4 |  |
+| 0.5 | Flux map indexing | pass | 0 shape failures; 0 shots with the scorer O-point more than one cell from the axis; 23 shots with a border extremum for review |  |
 | 0.10 | Grid | pass | one grid per machine |  |
 | 0.9 | Coil geometry | pass | one geometry per machine |  |
 | 0.6 | Boundary contour | review | 0 shots flagged |  |
@@ -70,25 +70,47 @@ DIII-D label set matches the expected 11 columns
 - mast_public_test columns: coil_R, coil_Z, coil_angle1, coil_angle2, coil_height, coil_input_column, coil_name, coil_width, efit_grid_R, efit_grid_Z, efit_times, magnetics_efps_current, magnetics_p2l_current, magnetics_p2u_current, magnetics_p3l_current, magnetics_p3u_current, magnetics_p4l_current, magnetics_p4u_current, magnetics_p5l_current, magnetics_p5u_current, magnetics_p6l_current, magnetics_p6u_current, magnetics_plasma_current, magnetics_sol_current, magnetics_tf_current, magnetics_time, source, thomson_chord_R, thomson_chord_Z, thomson_chord_name, thomson_core_R, thomson_core_Te, thomson_core_ne, thomson_core_times, thomson_edge_Te, thomson_edge_ne, thomson_edge_spatial, thomson_edge_times
 - mast_samples columns: coil_R, coil_Z, coil_angle1, coil_angle2, coil_height, coil_input_column, coil_name, coil_width, efit_beta_n, efit_beta_p, efit_elongation, efit_geom_axis_r, efit_geom_axis_z, efit_grid_R, efit_grid_Z, efit_lcfs_n, efit_lcfs_r, efit_lcfs_z, efit_li, efit_psi_axis, efit_psi_boundary, efit_psirz, efit_q95, efit_r_axis, efit_times, efit_z_axis, magnetics_dsep, magnetics_dsep_times, magnetics_efps_current, magnetics_p2l_current, magnetics_p2u_current, magnetics_p3l_current, magnetics_p3u_current, magnetics_p4l_current, magnetics_p4u_current, magnetics_p5l_current, magnetics_p5u_current, magnetics_p6l_current, magnetics_p6u_current, magnetics_plasma_current, magnetics_sol_current, magnetics_tf_current, magnetics_time, source, thomson_chord_R, thomson_chord_Z, thomson_chord_name, thomson_core_R, thomson_core_Te, thomson_core_ne, thomson_core_times, thomson_edge_Te, thomson_edge_ne, thomson_edge_spatial, thomson_edge_times
 
-### 0.2 Ip time axis (fail)
+### 0.2 Ip time axis (pass)
 
-69.7% of 7915 DIII-D shots corrected; 1 shot(s) fail
+69.7% of 7915 DIII-D shots corrected by the organizers' fix, 30.3% aligned by rule B; 0 shot(s) fail; 135 for review
 
-- diii_d_public_test: 67.0% of 874 shots corrected
-- diii_d_train: 70.0% of 7041 shots corrected
-- Shift applied on corrected shots (ms): -3169.74: 1031, -3204.43: 603, -3275.21: 406, -3135.51: 372, -3239.58: 291, -3118.56: 246, -3257.34: 234, -3311.33: 193, ... 63 more
-- Breakdown time after fix (ms): min -118.3, median 17.6, max 347.8
-- Breakdown time on shipped axis, corrected shots (ms): min 3080, median 3217, max 3456
-- Breakdown time on shipped axis, untouched shots (ms): min -40.69, median 188.3, max 347.8
-- Median |Ip| at EFIT frames after fix (kA): min 75.68, median 994.7, max 2123
-- Median |Ip| at EFIT frames on shipped axis (kA): min 0.1901, median 5.073, max 2072
-- Ratio median |Ip| over p99.5 |Ip|: min 0.09734, median 0.9824, max 0.9986
+- diii_d_public_test: organizers' fix corrected 67.0% of 874 shots; rule B alignment applied to 33.0%
+- diii_d_train: organizers' fix corrected 70.0% of 7041 shots; rule B alignment applied to 30.0%
+- Organizers' shift on corrected shots (ms): -3169.74: 1031, -3204.43: 603, -3275.21: 406, -3135.51: 372, -3239.58: 291, -3118.56: 246, -3257.34: 234, -3311.33: 193, ... 63 more
+- Rule B shift on aligned shots (ms): min -332.9, median -173.4, max 55.59; positive on 2.2%
+- Breakdown after the organizers' fix (ms), corrected shots: min -118.3, median 14.87, max 130.7; untouched shots: min -40.69, median 188.3, max 347.8
+- Breakdown on the final axis (ms): min -118.3, median 14.9, max 130.7
+- Breakdown on the shipped axis (ms), corrected shots: min 3080, median 3217, max 3456
+- Median |Ip| at EFIT frames, final axis (kA): min 197.3, median 995, max 2123; shipped axis: min 0.1901, median 5.073, max 2072
+- Ratio median |Ip| over p99.5 |Ip|: min 0.193, median 0.9824, max 0.9986
+- |Ip| at the first EFIT frame over p99.5 |Ip|: min 0.172, median 0.463, max 1.027
+- First EFIT frame minus breakdown (ms): min 49.27, median 228.7, max 5584; negative on 0 shots
 - 99.5th percentile |Ip| (kA): min 498.5, median 1068, max 2205
-- Fixed axis covers the EFIT window: 100.0%
-- MAST (1209 shots): Ip covers EFIT window 100.0%; median |Ip| at EFIT frames (kA): min 400.9, median 692.7, max 929.8; Ip NaN count: min 0, median 0, max 7982
+- Final axis covers the EFIT window: 100.0%
+- Rule A diagnostic: solenoid swing-down anchor (ms) min -519.6, median 1.322, max 6530; lag to fixed breakdown min -6315, median 15.9, max 530.9; A minus B shift (ms) min -521.1, median -0.1778, max 6529; |A minus B| above 10 ms on 88 shots; no anchor on 2 shots
+- MAST (1209 shots): Ip covers EFIT window 100.0%; median |Ip| at EFIT frames (kA): min 400.9, median 692.7, max 929.8; first-frame ratio min 0.192, median 0.727, max 1.154; Ip NaN count: min 0, median 0, max 7982
 
-Flagged shots (1, showing up to 20; the full list is in qa_per_shot.parquet):
-- diii_d_train/21f23b2392: Ip does not cover the EFIT window or reads near zero after the fix
+Shots for review (135, showing up to 20):
+- diii_d_public_test/17deff9e15: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/2a8627f026: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/3806f9a549: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/6a7e6a0e38: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/73e56964b1: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/883a99778c: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/a2d4b93190: rule A and rule B shifts differ by more than 10 ms
+- diii_d_public_test/f529ba7944: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/06450fdad2: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/065af5741d: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/08d0ee1ffa: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/08ffcbc9bb: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/0c7dfda639: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/0ee67bbb0e: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/179019cb31: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/23bc448cdf: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/2816ad1386: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/331a7543a3: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/3544120460: rule A and rule B shifts differ by more than 10 ms
+- diii_d_train/355f5534b6: rule A and rule B shifts differ by more than 10 ms
 
 ### 0.3 MAST Thomson alignment (review)
 
@@ -102,7 +124,7 @@ fix applied on 100.0% of 1209 MAST shots
 
 ### 0.4 Current units (review)
 
-DIII-D Ip p99 |value| median 1059; MAST Ip p99 |value| median 751.4
+DIII-D Ip p99 |value| median 1060; MAST Ip p99 |value| median 751.4
 
 **DIII-D** (values as stored, inside the EFIT window)
 
@@ -128,7 +150,7 @@ DIII-D Ip p99 |value| median 1059; MAST Ip p99 |value| median 751.4
 | F9A | 7901 | -398.5 | 288 | 84.66 | 396.6 | 0.000 |
 | F9B | 7901 | -403.5 | 414.8 | 97.08 | 404.1 | 0.000 |
 | bcoil | 7901 | -135.2 | 134.4 | 119.5 | 129.6 | 0.000 |
-| plasma_current | 7901 | -1704 | 2268 | 1059 | 2209 | 0.000 |
+| plasma_current | 7901 | -1704 | 2268 | 1060 | 2209 | 0.000 |
 
 **MAST** (values as stored, inside the EFIT window)
 
@@ -150,35 +172,35 @@ DIII-D Ip p99 |value| median 1059; MAST Ip p99 |value| median 751.4
 | tf_current | 1209 | -178.4 | -52.38 | 84.85 | 87.12 | 0.834 |
 
 
-### 0.5 Flux map indexing (fail)
+### 0.5 Flux map indexing (pass)
 
-0 shape failures; 40 shots with the extremum more than one cell from the axis
+0 shape failures; 0 shots with the scorer O-point more than one cell from the axis; 23 shots with a border extremum for review
 
 - Shapes: (T, 65, 65): 7044
-- DIII-D (7041 shots): cell distance, conventional reading, per-shot max: min 2.693e-05, median 0.4829, max 36.38; transposed reading median: min 2.693e-05, median 2.331, max 32.46; opposite extremum median: min 20.95, median 26.15, max 35.68; extremum on grid border: min 0.00, median 0.00, max 0.60
-- MAST (3 shots): cell distance, conventional reading, per-shot max: min 0.4035, median 0.4462, max 0.4913; transposed reading median: min 4.349, median 4.769, max 4.771; opposite extremum median: min 20.35, median 20.5, max 20.53; extremum on grid border: min 0.00, median 0.00, max 0.00
+- DIII-D (7041 shots): scorer O-point cell distance, per-shot max: min 2.693e-05, median 0.4828, max 0.9298; interior local maximum found on min 1.00, median 1.00, max 1.00 of frames; global extremum cell distance, per-shot max: min 2.693e-05, median 0.4829, max 36.38; global extremum on the border: 23 shots; transposed reading median: min 2.693e-05, median 2.331, max 32.46; opposite extremum median: min 20.95, median 26.15, max 35.68
+- MAST (3 shots): scorer O-point cell distance, per-shot max: min 0.4035, median 0.4462, max 0.4913; interior local maximum found on min 1.00, median 1.00, max 1.00 of frames; global extremum cell distance, per-shot max: min 0.4035, median 0.4462, max 0.4913; global extremum on the border: 0 shots; transposed reading median: min 4.349, median 4.769, max 4.771; opposite extremum median: min 20.35, median 20.5, max 20.53
 
-Flagged shots (40, showing up to 20; the full list is in qa_per_shot.parquet):
-- diii_d_train/0153569121: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/05d137f577: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/07ea97f4e1: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/1491b89cb3: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/20aaf33cdd: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/27b661cf0d: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/299e952bf5: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/2e3b352031: extremum more than one cell from the stored axis on 30% of sampled frames
-- diii_d_train/36bc6cf20f: extremum more than one cell from the stored axis on 50% of sampled frames
-- diii_d_train/40aa784a43: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/5ae6a0ed0d: extremum more than one cell from the stored axis on 30% of sampled frames
-- diii_d_train/5ffff526a8: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/695c3c9001: extremum more than one cell from the stored axis on 50% of sampled frames
-- diii_d_train/698f1cc29c: extremum more than one cell from the stored axis on 20% of sampled frames
-- diii_d_train/6aaa335d9e: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/6f70acd2b5: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/7455726fc9: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/806b526bd2: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/85a4fdca11: extremum more than one cell from the stored axis on 10% of sampled frames
-- diii_d_train/96f4ca46b3: extremum more than one cell from the stored axis on 10% of sampled frames
+Shots for review (23, showing up to 20):
+- diii_d_train/1491b89cb3: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.48 cells)
+- diii_d_train/20aaf33cdd: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.41 cells)
+- diii_d_train/27b661cf0d: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.50 cells)
+- diii_d_train/36bc6cf20f: global extremum on the grid border on 50% of sampled frames (O-point max distance 0.51 cells)
+- diii_d_train/5ffff526a8: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.39 cells)
+- diii_d_train/695c3c9001: global extremum on the grid border on 50% of sampled frames (O-point max distance 0.43 cells)
+- diii_d_train/698f1cc29c: global extremum on the grid border on 20% of sampled frames (O-point max distance 0.49 cells)
+- diii_d_train/7455726fc9: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.45 cells)
+- diii_d_train/806b526bd2: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.49 cells)
+- diii_d_train/9739dfba14: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.51 cells)
+- diii_d_train/973d6add2d: global extremum on the grid border on 20% of sampled frames (O-point max distance 0.44 cells)
+- diii_d_train/9eb36ef610: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.48 cells)
+- diii_d_train/a2c4656611: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.49 cells)
+- diii_d_train/b1d10a768b: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.48 cells)
+- diii_d_train/b2ce477f64: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.45 cells)
+- diii_d_train/bda1f9217d: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.40 cells)
+- diii_d_train/c52ef2655b: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.53 cells)
+- diii_d_train/ced938a97c: global extremum on the grid border on 20% of sampled frames (O-point max distance 0.46 cells)
+- diii_d_train/dbcb12171a: global extremum on the grid border on 10% of sampled frames (O-point max distance 0.49 cells)
+- diii_d_train/e6df3967cb: global extremum on the grid border on 30% of sampled frames (O-point max distance 0.45 cells)
 
 ### 0.10 Grid (pass)
 
@@ -355,7 +377,7 @@ DIII-D: Hausdorff median 0.05 m, li ratio median 1.011; MAST: Hausdorff median 0
 
 9 of 9 contradictions assessed
 
-- D1 (DIII-D current units): median p99 |Ip| 1059, largest F-coil p99 569.9, ECOILA 32.61, bcoil 119.5; MAST Ip 751.4. Magnitudes in the hundreds to about a thousand read as kA and kA-turn, consistent with the dictionary and against the README's 'A' table. Final decision stays with the Green's-function fit in Phase C.
+- D1 (DIII-D current units): median p99 |Ip| 1060, largest F-coil p99 569.9, ECOILA 32.61, bcoil 119.5; MAST Ip 751.4. Magnitudes in the hundreds to about a thousand read as kA and kA-turn, consistent with the dictionary and against the README's 'A' table. Final decision stays with the Green's-function fit in Phase C.
 - D2 (DIII-D grid 'normalized 0-1'): efit_grid_R 0.84 to 2.54 m, efit_grid_Z -1.6 to 1.6 m on 7915 shots. Physical metres; dictionary agrees.
 - D3 (Thomson orientation), DIII-D: core Te rows equal the time axis on 100.0% of 7915 shots, so storage is (time, channel). Dictionary agrees.
 - D3 (Thomson orientation), MAST: core Te rows equal the time axis on 100.0% of 1209 shots, so storage is (time, channel). Dictionary agrees.

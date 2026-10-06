@@ -7,8 +7,11 @@ arrays, and applies the organizers' data fixes from the starter kit:
 - ``fix_d3d_ip_times`` corrects the DIII-D plasma-current time axis per shot.
 - ``align_mast_thomson_core`` drops the uncalibrated MAST Thomson data channel 0.
 
-Both fixes are imported from the starter kit, never reimplemented. Their effect is
-recorded in ``Shot.fixes`` so that quality checks can report what changed.
+Both fixes are imported from the starter kit, never reimplemented. After them the
+loader applies the project's own Ip alignment (``fusion_eq.ip_alignment``, rule B):
+DIII-D shots the organizers' fix leaves untouched get their Ip axis shifted so that
+breakdown falls at the fixed target time. The effect of every step is recorded in
+``Shot.fixes`` so that quality checks can report what changed.
 
 Raw files are never written to.
 """
@@ -23,7 +26,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from fusion_eq import starter_kit
+from fusion_eq import ip_alignment, starter_kit
 from fusion_eq.machines import MachineConfig, machine_from_filename
 
 # Columns the Ip time-axis fix reads. Requesting any Ip column loads all three.
@@ -144,21 +147,32 @@ def table_to_arrays(table: pa.Table) -> dict[str, Any]:
     return {name: to_ndarray(table.column(name)[0]) for name in table.column_names}
 
 
-def apply_fixes(shot: Shot, on_error: str = "raise") -> None:
-    """Applies the organizers' data fixes in place and records what they did.
+def apply_fixes(shot: Shot, on_error: str = "raise", align_ip: bool = True) -> None:
+    """Applies the data fixes in place and records what they did.
+
+    Order: the organizers' Ip time-axis fix, then the project's Ip alignment (rule B,
+    ``fusion_eq.ip_alignment.align_ip_times``) on DIII-D shots the organizers' fix left
+    untouched, then the organizers' MAST Thomson alignment.
 
     Args:
         shot: Shot whose ``data`` holds the raw columns.
         on_error: ``"raise"`` propagates a fix failure; ``"record"`` leaves the
             affected columns raw and stores the message under ``fixes[...]_error``.
+        align_ip: Whether to apply rule B after the organizers' fix. False keeps the
+            organizers' axis, for comparison.
 
-    Records in ``shot.fixes``:
-        ``ip_fix_applied`` (bool), ``ip_time_shift_ms`` (float, fixed minus shipped
-        axis origin), ``ip_times_shipped`` (the raw axis in ms) when the Ip columns are
-        loaded; ``thomson_core_fix_applied`` (bool), ``thomson_core_channels_before``
-        and ``..._after`` (int), ``thomson_core_dropped_nan_frac_te`` and ``..._ne``
-        (fraction of NaN in the dropped channel) when the Thomson core columns are
-        loaded.
+    Records in ``shot.fixes`` when the Ip columns are loaded:
+        ``ip_fix_applied`` (bool, the organizers' fix changed the axis),
+        ``ip_time_shift_ms`` (organizers' shift, fixed minus shipped origin),
+        ``ip_times_shipped`` (the raw axis in ms), ``ip_breakdown_before_ms``
+        (breakdown after the organizers' fix), ``ip_alignment_applied`` (bool),
+        ``ip_alignment_shift_ms`` (rule B shift, 0 when not applied),
+        ``ip_breakdown_after_ms`` (breakdown on the final axis), ``ip_alignment_error``
+        when no breakdown was found.
+    When the Thomson core columns are loaded: ``thomson_core_fix_applied`` (bool),
+        ``thomson_core_channels_before`` and ``..._after`` (int),
+        ``thomson_core_dropped_nan_frac_te`` and ``..._ne`` (fraction of NaN in the
+        dropped channel).
     """
     fixes = starter_kit.data_fixes()
     data = shot.data
@@ -176,6 +190,7 @@ def apply_fixes(shot: Shot, on_error: str = "raise") -> None:
             shot.fixes["ip_times_shipped"] = shipped
             shot.fixes["ip_time_shift_ms"] = float(fixed[0] - shipped[0])
             shot.fixes["ip_fix_applied"] = bool(fixed[0] != shipped[0])
+            _align_ip(shot, align_ip)
 
     if all(c in data for c in THOMSON_FIX_COLUMNS):
         te_raw = data["thomson_core_Te"]
@@ -201,9 +216,31 @@ def apply_fixes(shot: Shot, on_error: str = "raise") -> None:
             data["thomson_core_ne"] = ne_fixed
 
 
+def _align_ip(shot: Shot, align_ip: bool) -> None:
+    """Rule B on a shot whose Ip axis the organizers' fix left untouched (DIII-D only)."""
+    data = shot.data
+    ip = data["magnetics_plasma_current"]
+    axis = data["magnetics_plasma_current_times"]
+    before = ip_alignment.breakdown_time_ms(axis, ip)
+    shot.fixes["ip_breakdown_before_ms"] = before
+    shot.fixes["ip_alignment_applied"] = False
+    shot.fixes["ip_alignment_shift_ms"] = 0.0
+    shot.fixes["ip_breakdown_after_ms"] = before
+    if not align_ip or shot.fixes.get("ip_fix_applied", False):
+        return
+    if not np.isfinite(before):
+        shot.fixes["ip_alignment_error"] = "no Ip breakdown found"
+        return
+    aligned, shift, _ = ip_alignment.align_ip_times(axis, ip)
+    data["magnetics_plasma_current_times"] = aligned
+    shot.fixes["ip_alignment_applied"] = True
+    shot.fixes["ip_alignment_shift_ms"] = shift
+    shot.fixes["ip_breakdown_after_ms"] = ip_alignment.breakdown_time_ms(aligned, ip)
+
+
 def shot_from_table(table: pa.Table, path: Path | str, apply: bool = True,
                     on_fix_error: str = "raise",
-                    keep: Iterable[str] | None = None) -> Shot:
+                    keep: Iterable[str] | None = None, align_ip: bool = True) -> Shot:
     """Builds a ``Shot`` from an already-read table.
 
     Args:
@@ -213,13 +250,14 @@ def shot_from_table(table: pa.Table, path: Path | str, apply: bool = True,
         on_fix_error: Passed to ``apply_fixes``.
         keep: Columns to keep in ``data``; all table columns when None. Columns read
             only as fix dependencies are dropped here.
+        align_ip: Passed to ``apply_fixes``.
     """
     path = Path(path)
     cfg, shot_id = parse_shot_filename(path)
     shot = Shot(path=path, shot_id=shot_id, machine=cfg, data=table_to_arrays(table),
                 file_columns=file_columns(path))
     if apply:
-        apply_fixes(shot, on_error=on_fix_error)
+        apply_fixes(shot, on_error=on_fix_error, align_ip=align_ip)
     if keep is not None:
         keep = set(keep)
         shot.data = {k: v for k, v in shot.data.items() if k in keep}
@@ -227,7 +265,7 @@ def shot_from_table(table: pa.Table, path: Path | str, apply: bool = True,
 
 
 def load_shot(path: Path | str, columns: Iterable[str] | None = None,
-              apply: bool = True, on_fix_error: str = "raise") -> Shot:
+              apply: bool = True, on_fix_error: str = "raise", align_ip: bool = True) -> Shot:
     """Loads one shot with the data fixes applied.
 
     Args:
@@ -238,12 +276,14 @@ def load_shot(path: Path | str, columns: Iterable[str] | None = None,
             columns are not kept unless requested.
         apply: Whether to apply the data fixes. False returns the file as shipped.
         on_fix_error: ``"raise"`` or ``"record"``, see ``apply_fixes``.
+        align_ip: Whether to apply the project's Ip alignment (rule B) after the
+            organizers' fix. False keeps the organizers' axis, for comparison.
 
     Returns:
         The loaded shot.
     """
     if columns is None:
-        return shot_from_table(read_table(path), path, apply, on_fix_error)
+        return shot_from_table(read_table(path), path, apply, on_fix_error, align_ip=align_ip)
     requested = list(dict.fromkeys(columns))
     to_read = list(requested)
     if apply:
@@ -252,4 +292,4 @@ def load_shot(path: Path | str, columns: Iterable[str] | None = None,
         if any(c in requested for c in THOMSON_FIX_COLUMNS):
             to_read += [c for c in THOMSON_FIX_COLUMNS if c not in to_read]
     table = read_table(path, to_read)
-    return shot_from_table(table, path, apply, on_fix_error, keep=requested)
+    return shot_from_table(table, path, apply, on_fix_error, keep=requested, align_ip=align_ip)
