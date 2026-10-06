@@ -310,3 +310,106 @@ Contradictions are recorded with evidence and left unresolved.
 10. Which MAST scalar conventions (for example `efit_elongation` versus the scorer's kappa, and
     `efit_li` normalization) match the seven quantities the scorer derives, so that the demo
     shots can be used as a sanity check of the scorer on MAST.
+
+## 7. Frame table
+
+One row per EFIT frame, built by `scripts/build_frame_table.py` from the raw shot files
+(`fusion_eq.frame_table`, specification in `docs/FRAME_TABLE.md`). Inputs are resampled
+onto `efit_times`; labels are copied without change and exist in the training table only.
+Storage is float32 unless stated. Shaping-coil columns carry their own names: 18
+`magnetics_F{1-9}{A,B}` columns on DIII-D, 10 `magnetics_p{2-6}{l,u}_current` columns plus
+`magnetics_efps_current` on MAST, each with the three suffixes of the shared currents. The
+table below lists the DIII-D training table with the shaping coils collapsed to one row.
+
+Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` 10.0, `max_gap_ms` 5.0,
+`thomson_tol_ms` 20.0, Ip alignment on, flux-map summaries on. `build.json` records them.
+
+| Column | Role | Type | Units | Computation |
+| --- | --- | --- | --- | --- |
+| `machine` | key | string |  | Machine name |
+| `split` | key | string |  | Dataset split |
+| `shot` | key | string |  | Shot id |
+| `frame` | key | int32 |  | Index of the frame within the shot, from 0 |
+| `time_ms` | key | float64 | ms | efit_times[frame] |
+| `n_frames` | key | int32 |  | Frames in the shot |
+| `dt_prev_ms` | key | float32 | ms | Time since the previous frame; NaN on the first |
+| `ip__nearest` | input | float32 | kA | Nearest valid sample of magnetics_plasma_current; NaN beyond max_gap_ms |
+| `ip__mean` | input | float32 | kA | Mean of magnetics_plasma_current over the centred window_ms; interpolated when empty |
+| `ip__rate` | input | float32 | kA/s | Least-squares slope of magnetics_plasma_current over the centred rate_window_ms |
+| `sol__nearest` | input | float32 | kA | Nearest valid sample of magnetics_ECOILA; NaN beyond max_gap_ms |
+| `sol__mean` | input | float32 | kA | Mean of magnetics_ECOILA over the centred window_ms; interpolated when empty |
+| `sol__rate` | input | float32 | kA/s | Least-squares slope of magnetics_ECOILA over the centred rate_window_ms |
+| `tf__nearest` | input | float32 | kA | Nearest valid sample of magnetics_bcoil; NaN beyond max_gap_ms |
+| `tf__mean` | input | float32 | kA | Mean of magnetics_bcoil over the centred window_ms; interpolated when empty |
+| `tf__rate` | input | float32 | kA/s | Least-squares slope of magnetics_bcoil over the centred rate_window_ms |
+| `<shaping coil>__nearest` | input | float32 | kA-turn | Nearest valid sample; NaN beyond max_gap_ms, one column per shaping coil |
+| `<shaping coil>__mean` | input | float32 | kA-turn | Mean over the centred window_ms; interpolated when the window is empty, one column per shaping coil |
+| `<shaping coil>__rate` | input | float32 | kA-turn/s | Least-squares slope over the centred rate_window_ms, one column per shaping coil |
+| `magnetics_efps_current__nearest`, `__mean`, `__rate` (MAST only) | input | float32 | kA, kA, kA/s | Same three forms as the shared currents |
+| `ts_core_te_peak__interp` | input | float32 | eV | core te peak, linear interpolation between valid slices |
+| `ts_core_te_peak__nearest` | input | float32 | eV | core te peak, nearest valid slice |
+| `ts_core_ne_peak__interp` | input | float32 | m^-3 | core ne peak, linear interpolation between valid slices |
+| `ts_core_ne_peak__nearest` | input | float32 | m^-3 | core ne peak, nearest valid slice |
+| `ts_core_pe_peak__interp` | input | float32 | kPa | core pe peak, linear interpolation between valid slices |
+| `ts_core_pe_peak__nearest` | input | float32 | kPa | core pe peak, nearest valid slice |
+| `ts_core_pe_mean__interp` | input | float32 | kPa | core pe mean, linear interpolation between valid slices |
+| `ts_core_pe_mean__nearest` | input | float32 | kPa | core pe mean, nearest valid slice |
+| `ts_core_n_valid` | input | float32 | count | Valid channels in the nearest valid slice |
+| `ts_core_dt_ms` | input | float32 | ms | Distance to the nearest valid slice |
+| `ts_core_gap_ms` | input | float32 | ms | Time between the valid slices either side |
+| `ts_edge_te_mean__interp` | input | float32 | eV | edge te mean, linear interpolation between valid slices |
+| `ts_edge_te_mean__nearest` | input | float32 | eV | edge te mean, nearest valid slice |
+| `ts_edge_ne_mean__interp` | input | float32 | m^-3 | edge ne mean, linear interpolation between valid slices |
+| `ts_edge_ne_mean__nearest` | input | float32 | m^-3 | edge ne mean, nearest valid slice |
+| `ts_edge_pe_mean__interp` | input | float32 | kPa | edge pe mean, linear interpolation between valid slices |
+| `ts_edge_pe_mean__nearest` | input | float32 | kPa | edge pe mean, nearest valid slice |
+| `ts_edge_n_valid` | input | float32 | count | Valid channels in the nearest valid slice |
+| `ts_edge_dt_ms` | input | float32 | ms | Distance to the nearest valid slice |
+| `ts_edge_gap_ms` | input | float32 | ms | Time between the valid slices either side |
+| `mag_rate_hz` | flag | int32 | Hz | Recording rate of magnetics_time, rounded to 100 Hz |
+| `mag_has_nan` | flag | bool |  | A current column has NaN inside the EFIT window |
+| `ip_direction` | flag | int8 |  | +1, -1 or 0 (mixed), Ip inside the EFIT window |
+| `tf_direction` | flag | int8 |  | +1, -1 or 0 (mixed), toroidal field inside the EFIT window |
+| `ip_fix` | flag | string |  | organizers, alignment or none |
+| `ip_shift_ms` | flag | float32 | ms | Total shift applied to the Ip time axis |
+| `ip_over_peak` | flag | float32 |  | abs(ip__mean) over the shot's 99.5th percentile of abs(Ip) |
+| `inputs_complete` | flag | bool |  | Every current __mean column is finite |
+| `ts_core_valid` | flag | bool |  | Nearest valid core slice within thomson_tol_ms |
+| `ts_edge_valid` | flag | bool |  | Nearest valid edge slice within thomson_tol_ms |
+| `efit_q95` | label | float64 |  | Copied from the shot file |
+| `efit_beta_n` | label | float64 |  | Copied from the shot file |
+| `efit_li` | label | float64 |  | Copied from the shot file |
+| `efit_r_axis` | label | float64 |  | Copied from the shot file |
+| `efit_z_axis` | label | float64 |  | Copied from the shot file |
+| `efit_lcfs_n` | label | float64 |  | Copied from the shot file |
+| `psi_min` | label | float32 | Wb/rad | min of the frame's flux map |
+| `psi_max` | label | float32 | Wb/rad | max of the frame's flux map |
+| `psi_mean` | label | float32 | Wb/rad | mean of the frame's flux map |
+
+Notes.
+
+- `ip`, `sol` and `tf` map to `magnetics_plasma_current`, `magnetics_ECOILA` / `magnetics_sol_current`
+  and `magnetics_bcoil` / `magnetics_tf_current`. DIII-D Ip is resampled from its own time axis after
+  the organizers' fix and the project's alignment (section 4.1); every other current from `magnetics_time`.
+- On MAST each current is resampled on its own valid samples, so the one-in-six NaN holes of the
+  114 early-campaign shots are skipped (F20). `mag_has_nan` marks those shots.
+- `mag_rate_hz` is `(n - 1) / (t_last - t_first)` over the finite entries of `magnetics_time` in
+  float64, rounded to the nearest 100 Hz. A median-step estimate on the float32 axis can miss 20000.
+  The value returned on the 114 MAST shots with the 15,482-sample merged time axis is to be read
+  from the smoke run and recorded here.
+- `ip_shift_ms` is the organizers' shift plus the rule B shift, both from `Shot.fixes`; 0 on MAST.
+  `ip_fix` is `organizers` when the organizers' fix changed the axis, `alignment` when rule B did,
+  else `none`.
+- `ip_direction` and `tf_direction` use the samples inside the EFIT window: +1 when every finite
+  value is at least 0, -1 when every value is at most 0, 0 when mixed. Same rule as the QA notebook.
+- Thomson: DIII-D zeros become NaN; a channel is valid when both Te and ne are present; a slice is
+  valid with at least half its channels valid (`fusion_eq.thomson`, shared with QA check 0.7).
+  Summaries are computed per valid slice from the valid channels, then interpolated linearly in
+  time between valid slices (`__interp`, end values held) or taken from the nearest valid slice
+  (`__nearest`). `pe` is ne x Te x 1.602e-19 / 1000 in kPa. Peaks are 90th percentiles across channels.
+- Labels: the six copied columns equal the shot file exactly (float64 storage holds float32 and
+  float64 sources without change). `psi_min/max/mean` are per-frame statistics of `efit_psirz`.
+  Flux maps are not stored; `read_flux_maps` reads them from the raw files. `magnetics_dsep` is
+  excluded. `efit_lcfs_r/z` are not stored.
+- `shot_index.parquet` holds one row per shot: split, machine, shot, path, n_frames, the shot-level
+  flags, `ts_core_any_valid`, `ts_edge_any_valid`, `inputs_complete_frac` and `error`.

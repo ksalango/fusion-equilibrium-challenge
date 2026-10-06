@@ -152,10 +152,7 @@ def check_current_units(shot: Shot) -> dict:
     for col in cols:
         short = col[len("magnetics_"):]
         values = np.asarray(shot[col], dtype=np.float64)
-        if shot.machine.ip_has_own_time_axis and col == "magnetics_plasma_current":
-            axis_name = "magnetics_plasma_current_times"
-        else:
-            axis_name = "magnetics_time"
+        axis_name = shot.machine.time_axis_column(col)
         if axis_name not in shot:
             out[f"cur_{short}_error"] = f"time axis {axis_name} not loaded"
             continue

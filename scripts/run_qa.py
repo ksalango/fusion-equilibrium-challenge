@@ -19,44 +19,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
-import random
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-
 from fusion_eq import starter_kit
+from fusion_eq.dataset import (ALL_SPLITS, DATA_SPLITS, REPO_ROOT, SAMPLE_SPLIT, default_data_root,
+                               list_shots, run_info, select_shots)
 from fusion_eq.qa.report import RunContext, render_report, summarize
 from fusion_eq.qa.run import rows_to_frame, run_shot
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_ROOT = REPO_ROOT.parent / "data" / "raw" / "data"
-DATA_SPLITS = ("diii_d_train", "diii_d_public_test", "mast_public_test")
-SAMPLE_SPLIT = "mast_samples"
-ALL_SPLITS = DATA_SPLITS + (SAMPLE_SPLIT,)
-
-
-def list_shots(data_root: Path, split: str) -> list[Path]:
-    """Sorted shot files of one split; the MAST samples come from the starter kit."""
-    if split == SAMPLE_SPLIT:
-        return starter_kit.sample_shot_paths("MAST")
-    folder = data_root / split
-    if not folder.is_dir():
-        raise FileNotFoundError(f"split folder not found: {folder}")
-    return sorted(folder.glob("*.parquet"))
-
-
-def select_shots(files: list[Path], n_shots: int | None, seed: int) -> list[Path]:
-    """Deterministic sample of ``n_shots`` files, or all of them when None."""
-    if n_shots is None or n_shots >= len(files):
-        return list(files)
-    rng = random.Random(seed)
-    return sorted(rng.sample(files, n_shots))
 
 
 def build_jobs(args) -> list[tuple[str, Path, bool]]:
@@ -91,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0, help="seed of the shot sampling")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "internal" / "qa")
-    parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
+    parser.add_argument("--data-root", type=Path, default=default_data_root())
     args = parser.parse_args(argv)
 
     starter_kit.require()
@@ -116,25 +88,15 @@ def main(argv: list[str] | None = None) -> int:
     df.to_parquet(args.out / "qa_per_shot.parquet", index=False)
 
     runtime = time.time() - started
-    run_info = {
-        "timestamp": timestamp,
-        "repo_commit": starter_kit.git_commit(REPO_ROOT),
-        "starter_commit": starter_kit.git_commit(starter_kit.starter_dir()),
-        "args": " ".join(sys.argv[1:]) if argv is None else " ".join(argv),
-        "arguments": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
-        "n_shots": int(len(df)),
-        "shots_per_split": {s: int(n) for s, n in df.groupby("split").size().items()},
-        "runtime_s": runtime,
-        "python": platform.python_version(),
-        "numpy": np.__version__,
-        "pandas": pd.__version__,
-    }
-    (args.out / "qa_run.json").write_text(json.dumps(run_info, indent=2) + "\n")
+    info = run_info(argv, vars(args), timestamp, runtime,
+                    n_shots=int(len(df)),
+                    shots_per_split={s: int(n) for s, n in df.groupby("split").size().items()})
+    (args.out / "qa_run.json").write_text(json.dumps(info, indent=2) + "\n")
 
     ctx = RunContext(full_run=args.n_shots is None and set(args.splits) >= set(DATA_SPLITS),
                      splits=tuple(args.splits))
     results = summarize(df, ctx)
-    (args.out / "qa_report.md").write_text(render_report(results, run_info, df))
+    (args.out / "qa_report.md").write_text(render_report(results, info, df))
 
     print(f"wrote {args.out / 'qa_per_shot.parquet'}, qa_report.md, qa_run.json in {runtime:.0f} s")
     for r in results:

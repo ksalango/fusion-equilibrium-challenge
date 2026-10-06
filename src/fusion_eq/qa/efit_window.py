@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from fusion_eq.resample import nearest_distance_ms
+
+__all__ = ["efit_window_ms", "window_mask", "nearest_distance_ms"]
+
 
 def efit_window_ms(efit_times: np.ndarray) -> tuple[float, float]:
     """Returns the (first, last) finite EFIT time in ms."""
@@ -35,25 +39,3 @@ def window_mask(times_ms: np.ndarray, efit_times: np.ndarray, pad_ms: float = 0.
     if not np.isfinite(lo):
         return np.zeros(t.shape, dtype=bool)
     return np.isfinite(t) & (t >= lo - pad_ms) & (t <= hi + pad_ms)
-
-
-def nearest_distance_ms(query_ms: np.ndarray, reference_ms: np.ndarray) -> np.ndarray:
-    """Distance in ms from each query time to the nearest reference time.
-
-    Args:
-        query_ms: Times to look up, any shape.
-        reference_ms: Reference times, unsorted and possibly containing NaN.
-
-    Returns:
-        Array with the shape of ``query_ms``; infinity when there is no finite
-        reference time.
-    """
-    q = np.asarray(query_ms, dtype=np.float64)
-    ref = np.sort(np.asarray(reference_ms, dtype=np.float64))
-    ref = ref[np.isfinite(ref)]
-    if ref.size == 0:
-        return np.full(q.shape, np.inf)
-    idx = np.searchsorted(ref, q)
-    left = ref[np.clip(idx - 1, 0, ref.size - 1)]
-    right = ref[np.clip(idx, 0, ref.size - 1)]
-    return np.minimum(np.abs(q - left), np.abs(q - right))

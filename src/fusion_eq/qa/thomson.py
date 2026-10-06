@@ -8,15 +8,14 @@ import numpy as np
 
 from fusion_eq.io import Shot
 from fusion_eq.qa.efit_window import nearest_distance_ms, window_mask
+from fusion_eq.thomson import (SYSTEMS, VALID_PROFILE_FRACTION, missing_mask, valid_channel_mask,
+                               valid_slice_mask)
 
-# A Thomson time slice counts as a valid profile when at least this fraction of
-# its channels has both Te and ne present.
-VALID_PROFILE_FRACTION = 0.5
+__all__ = ["check_thomson_alignment", "check_thomson_missing", "missing_mask",
+           "VALID_PROFILE_FRACTION", "MATCH_TOLERANCES_MS", "SYSTEMS"]
 
 # Tolerances for matching a Thomson slice to an EFIT frame, in ms.
 MATCH_TOLERANCES_MS = (10.0, 20.0)
-
-SYSTEMS = ("core", "edge")
 
 
 def check_thomson_alignment(shot: Shot) -> dict:
@@ -52,21 +51,6 @@ def check_thomson_alignment(shot: Shot) -> dict:
     return out
 
 
-def missing_mask(values: np.ndarray, convention: str) -> np.ndarray:
-    """Marks missing Thomson points under a machine's convention.
-
-    Args:
-        values: Te or ne array.
-        convention: ``"zero"`` (exact zero or non-finite is missing) or ``"nan"``
-            (non-finite is missing).
-    """
-    v = np.asarray(values, dtype=np.float64)
-    missing = ~np.isfinite(v)
-    if convention == "zero":
-        missing |= v == 0
-    return missing
-
-
 def _system_metrics(prefix: str, times, te, ne, efit: np.ndarray, convention: str) -> dict:
     out: dict = {}
     times = np.asarray(times, dtype=np.float64)
@@ -81,7 +65,7 @@ def _system_metrics(prefix: str, times, te, ne, efit: np.ndarray, convention: st
     if not out[f"{prefix}shape_matches_times"]:
         return out
 
-    valid = ~missing_mask(te, convention) & ~missing_mask(ne, convention)
+    valid = valid_channel_mask(te, ne, convention)
     inside = window_mask(times, efit)
     out[f"{prefix}n_times_window"] = int(inside.sum())
     n_channels = te.shape[1]
@@ -97,12 +81,12 @@ def _system_metrics(prefix: str, times, te, ne, efit: np.ndarray, convention: st
     out[f"{prefix}missing_frac_per_channel"] = json.dumps(
         [round(float(x), 4) for x in missing_per_channel])
     n_valid_per_slice = valid_w.sum(axis=1)
+    is_profile = valid_slice_mask(valid_w)
     out[f"{prefix}slice_all_missing_frac"] = float((n_valid_per_slice == 0).mean())
-    out[f"{prefix}slice_valid_profile_frac"] = float(
-        (n_valid_per_slice >= np.ceil(VALID_PROFILE_FRACTION * n_channels)).mean())
+    out[f"{prefix}slice_valid_profile_frac"] = float(is_profile.mean())
 
     t_w = times[inside]
-    profile_times = t_w[n_valid_per_slice >= np.ceil(VALID_PROFILE_FRACTION * n_channels)]
+    profile_times = t_w[is_profile]
     any_times = t_w[n_valid_per_slice >= 1]
     d_profile = nearest_distance_ms(efit, profile_times)
     d_any = nearest_distance_ms(efit, any_times)

@@ -10,6 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# The plasma current column carries the same name on both machines.
+IP_COLUMN = "magnetics_plasma_current"
+MAGNETICS_TIME_COLUMN = "magnetics_time"
+IP_TIME_COLUMN = "magnetics_plasma_current_times"
+
 
 @dataclass(frozen=True)
 class MachineConfig:
@@ -23,7 +28,13 @@ class MachineConfig:
             psi on DIII-D and the maximum on MAST.
         thomson_missing: Missing-value convention of the Thomson data, ``"zero"``
             (exact 0 marks a missing point) or ``"nan"``.
-        solenoid_column: Current column of the central solenoid.
+        solenoid_column: Current column of the central solenoid, in kA.
+        tf_column: Current column of the toroidal field coils, in kA. No poloidal
+            flux contribution and no geometry rows.
+        shaping_coil_columns: Current columns of the poloidal field (shaping) coils,
+            in kA-turn, in the order used throughout the frame table.
+        extra_current_columns: Current columns that are neither Ip, solenoid, toroidal
+            field nor shaping coil (MAST ``magnetics_efps_current``), in kA.
         ip_has_own_time_axis: True when the plasma current sits on
             ``magnetics_plasma_current_times`` instead of ``magnetics_time``.
         lcfs_padding: Expected padding value of ``efit_lcfs_r/z`` beyond
@@ -36,9 +47,33 @@ class MachineConfig:
     axis_sign: float
     thomson_missing: str
     solenoid_column: str
+    tf_column: str
+    shaping_coil_columns: tuple[str, ...]
+    extra_current_columns: tuple[str, ...]
     ip_has_own_time_axis: bool
     lcfs_padding: str
     mask_file: str
+
+    @property
+    def ip_column(self) -> str:
+        """Plasma current column, in kA."""
+        return IP_COLUMN
+
+    @property
+    def current_columns(self) -> tuple[str, ...]:
+        """Every current column: Ip, solenoid, toroidal field, shaping coils, extras."""
+        return (self.ip_column, self.solenoid_column, self.tf_column,
+                *self.shaping_coil_columns, *self.extra_current_columns)
+
+    def time_axis_column(self, current_column: str) -> str:
+        """Time-axis column of a current column.
+
+        DIII-D Ip sits on its own axis (``magnetics_plasma_current_times``); every
+        other current on both machines sits on ``magnetics_time``.
+        """
+        if self.ip_has_own_time_axis and current_column == self.ip_column:
+            return IP_TIME_COLUMN
+        return MAGNETICS_TIME_COLUMN
 
 
 DIII_D = MachineConfig(
@@ -47,6 +82,9 @@ DIII_D = MachineConfig(
     axis_sign=-1.0,
     thomson_missing="zero",
     solenoid_column="magnetics_ECOILA",
+    tf_column="magnetics_bcoil",
+    shaping_coil_columns=tuple(f"magnetics_F{i}{s}" for i in range(1, 10) for s in "AB"),
+    extra_current_columns=(),
     ip_has_own_time_axis=True,
     lcfs_padding="zero",
     mask_file="d3d_envelope.npz",
@@ -58,6 +96,9 @@ MAST = MachineConfig(
     axis_sign=1.0,
     thomson_missing="nan",
     solenoid_column="magnetics_sol_current",
+    tf_column="magnetics_tf_current",
+    shaping_coil_columns=tuple(f"magnetics_p{i}{s}_current" for i in range(2, 7) for s in "lu"),
+    extra_current_columns=("magnetics_efps_current",),
     ip_has_own_time_axis=False,
     lcfs_padding="nan",
     mask_file="mast_envelope.npz",
