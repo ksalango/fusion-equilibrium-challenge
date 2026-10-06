@@ -290,7 +290,8 @@ Convention, confirmed against the EFIT filament routine (public translation in t
 
 Flux calculation (`docs/COIL_FLUX.md`): each element is divided into filaments on the
 unsheared rectangle and then sheared, n along the shorter side and proportionally more
-along the longer one so that sub-cells are near square; the distance between a filament and an
+along the longer one so that sub-cells are near square. n is 16, chosen on 7 October 2026
+from the K2 convergence runs (`docs/COIL_FLUX.md`, D2); the tables built on 6 October 2026 used 4; the distance between a filament and an
 evaluation point is floored at 0.2235 times the sum of the sub-cell width and height, the
 geometric mean distance of the sub-cell from itself. Currents enter the Green's tables in
 kA and patterns are stored per kA of a column's value. Turn conventions:
@@ -377,6 +378,7 @@ Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` 10.0, `max_gap_ms
 | `<shaping coil>__mean` | input | float32 | kA-turn | Mean over the centred window_ms; interpolated when the window is empty, one column per shaping coil |
 | `<shaping coil>__rate` | input | float32 | kA-turn/s | Least-squares slope over the centred rate_window_ms, one column per shaping coil |
 | `magnetics_efps_current__nearest`, `__mean`, `__rate` (MAST only) | input | float32 | kA, kA, kA/s | Same three forms as the shared currents |
+| `magnetics_p3l_current__*`, `magnetics_p3u_current__*` (MAST only) | input | float32 | kA-turn | Shaping coils as above; the P3 coils carry almost no current during the plasma (F30, see the notes) |
 | `ts_core_te_peak__interp` | input | float32 | eV | core te peak, linear interpolation between valid slices |
 | `ts_core_te_peak__nearest` | input | float32 | eV | core te peak, nearest valid slice |
 | `ts_core_ne_peak__interp` | input | float32 | m^-3 | core ne peak, linear interpolation between valid slices |
@@ -388,7 +390,7 @@ Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` 10.0, `max_gap_ms
 | `ts_core_n_valid` | input | float32 | count | Valid channels in the nearest valid slice |
 | `ts_core_dt_ms` | input | float32 | ms | Distance to the nearest valid slice |
 | `ts_core_gap_ms` | input | float32 | ms | Time between the valid slices either side |
-| `ts_edge_te_mean__interp` | input | float32 | eV | edge te mean, linear interpolation between valid slices |
+| `ts_edge_te_mean__interp` | input | float32 | eV | edge te mean, linear interpolation between valid slices. The edge systems measure different regions on the two machines (F38, see the notes) |
 | `ts_edge_te_mean__nearest` | input | float32 | eV | edge te mean, nearest valid slice |
 | `ts_edge_ne_mean__interp` | input | float32 | m^-3 | edge ne mean, linear interpolation between valid slices |
 | `ts_edge_ne_mean__nearest` | input | float32 | m^-3 | edge ne mean, nearest valid slice |
@@ -426,8 +428,18 @@ Notes.
   114 early-campaign shots are skipped (F20). `mag_has_nan` marks those shots.
 - `mag_rate_hz` is `(n - 1) / (t_last - t_first)` over the finite entries of `magnetics_time` in
   float64, rounded to the nearest 100 Hz. A median-step estimate on the float32 axis can miss 20000.
-  The value returned on the 114 MAST shots with the 15,482-sample merged time axis is to be read
-  from the smoke run and recorded here.
+  On the 114 MAST shots with the 15,482-sample merged time axis (`mag_has_nan` true) it returns
+  1,900 Hz, which is not a recording rate but the sample count of the merged axis over its span
+  (F31). `mag_has_nan` identifies these shots.
+- The MAST P3 coils (`magnetics_p3l_current`, `magnetics_p3u_current`) carry almost no current
+  during the plasma: 1st to 99th percentile of the mean form about -0.6 to 1.6 kA-turn, extremes
+  -21 to 39 (F30). The two resampling forms differ by 11 to 16 percent of the spread at the
+  median, which is noise on an idle coil. The coils stay in the coil-flux calculation in the
+  mean form.
+- The "edge" Thomson system does not measure the same region on the two machines: median
+  `ts_edge_te_mean` is 1,980 eV on DIII-D training (1st percentile 462) and 143 eV on MAST
+  (F38). Edge summaries are not comparable across machines and are not used as inputs as they
+  are; profile descriptors on a normalized radius replace them.
 - `ip_shift_ms` is the organizers' shift plus the rule B shift, both from `Shot.fixes`; 0 on MAST.
   `ip_fix` is `organizers` when the organizers' fix changed the axis, `alignment` when rule B did,
   else `none`.

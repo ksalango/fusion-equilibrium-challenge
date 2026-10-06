@@ -4,11 +4,13 @@ Findings from the data quality phase of the Fusion Equilibrium Challenge project
 evidence for each and its consequence for data preparation and modelling. Later phases add
 their findings to this file.
 
-- Period covered: 4 to 5 October 2026.
+- Period covered: 4 to 6 October 2026.
 - Evidence: `reports/qa/qa_report.md` (full run over 9,124 shots, with the Ip alignment
-  enabled), `reports/qa_before_ipfix/qa_report.md` (the same run before the alignment) and
-  `notebooks/01_qa.ipynb`.
-- Check ids in brackets refer to `docs/QA.md`.
+  enabled), `reports/qa_before_ipfix/qa_report.md` (the same run before the alignment),
+  `notebooks/01_qa.ipynb`; from 6 October, `reports/frame_table/frame_table_report.md`,
+  `reports/frame_table/column_profile.parquet` (full build, commit 12da376) and
+  `notebooks/02_frame_table.ipynb`.
+- Check ids in brackets refer to `docs/QA.md` (0.x) and `docs/FRAME_TABLE.md` (Tx).
 
 ## Summary
 
@@ -17,6 +19,13 @@ the same population on every marker examined. One defect was found and corrected
 30% of DIII-D shots the plasma current (Ip) time axis was late by 50 to 330 ms after the
 organizers' published fix. Several properties of the data constrain how inputs, targets and
 missing values must be handled; these are listed below with the action each one requires.
+
+The frame table (one row per EFIT frame, inputs resampled onto frame times) was built over
+all 9,121 shots on 6 October and reproduces the QA run. Its review settled the resampling
+rules provisionally (windowed mean over 2 ms, Thomson interpolated in time) and found that
+the 10 ms rate-of-change window is too short, that MAST inputs lie inside the DIII-D ranges,
+and that simple physical combinations of the inputs already carry much of the signal in the
+scalar labels (F26 to F44).
 
 ## Completeness and structure
 
@@ -83,6 +92,63 @@ missing values must be handled; these are listed below with the action each one 
 | --- | --- | --- | --- |
 | F25 | The dataset README disagrees with the data in nine places. | All nine assessed against the full data; the data dictionary agrees with the data in each case. [0.13] | `docs/data_dictionary.md` is the reference. Two updates to it are proposed in the QA report (Thomson sample counts and channel counts). |
 
+## Frame table: build and checks
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F26 | The frame table is complete and reproduces the QA run. | 9,121 shots and 1,821,774 frames (1,559,340 / 193,359 / 69,075), no shot errors, 329 s. Keys unique. Labels are exact copies on 50 sampled training shots; test tables carry no label column. Recording rates (5,518 and 2,397), Ip directions (training 6,420 / 603 / 18, test 798 / 76) and MAST shots with NaN currents (114) match QA. Lowest Ip at a first frame is 0.172 of the shot's peak. [T1 to T6] | The table is the input to every later phase. |
+| F27 | Every frame has complete current inputs. | 100% of frames on all three splits, including the 114 MAST shots with NaN in the raw currents. [T4] | No imputation is needed for currents. |
+
+## Resampling of currents
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F28 | The nearest-sample and windowed-mean forms agree. | On DIII-D the median absolute difference is 0.1% to 1.3% of the column's spread on every signal and the 99th percentile is under 7%, at both recording rates; training and test are nearly identical. Frame values lie on the raw traces for one shot of each smoke kind. [T8, notebook section 2] | The windowed mean over 2 ms is adopted provisionally. The choice is confirmed on the ridge score in the baseline phase, after which the nearest form is dropped from the build. |
+| F29 | Exact zeros in the nearest-sample values are idle coils, not dropped samples. | Between 0.05% and 0.21% of training frames on F3A, F3B, F4A, F4B, F5A, F5B, F8A and F9B, under 0.04% on the other coils. On the smoke shots the affected coils carry 0.5 to 3.4 kA-turn in that shot, against hundreds when in use. | No handling needed. |
+| F30 | The MAST P3 coils carry almost no current during the plasma. | `magnetics_p3l_current__mean` and `p3u`: 1st to 99th percentile about -0.6 to 1.6 kA-turn, extremes -21 to 39. The two resampling forms differ by 11% to 16% of the spread at the median, which is noise on an idle coil. | Kept in the coil-flux calculation, in the windowed-mean form. |
+| F31 | The 114 MAST shots with merged clocks report a nominal recording rate of 1,900 Hz. | `mag_rate_hz` is 1,900 on 114 MAST shots, the same count as `mag_has_nan`. [T5] | 1,900 Hz is not a recording rate but the sample count of the merged axis over its span. `mag_has_nan` identifies these shots. |
+
+## Rates of change
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F32 | The 10 ms rate window is too short. | On flat-top frames (`ip_over_peak` above 0.9; 1,214,019 of 1,559,340 training frames) `ip__rate` has a standard deviation of 748 kA/s in the 20 kHz group and 1,067 kA/s in the 2 kHz group, as large as a typical ramp of 500 to 1,000 kA/s; the 1st to 99th percentile band is -1,940 to 1,806 kA/s and -2,179 to 2,011 kA/s. `magnetics_F1A__rate`: 162 and 212 kA-turn/s. The 2 kHz group is 1.3 to 1.4 times wider. In the 2 kHz example shot, flat-top frames are among the six largest rates. [notebook section 3] | The `__rate` columns are not used as built. A 50 ms rate is added beside the 10 ms one at the next rebuild, and both are tested in the time-dependence phase. The toroidal field rate is not a feature, since that current is constant within a shot. |
+| F33 | MAST plasmas change several times faster than DIII-D plasmas. | 1st to 99th percentile of `ip__rate`: -2,166 to 2,234 kA/s on DIII-D training, -8,935 to 7,048 on MAST. `sol__rate`: -66 to 47 against -461 to 224 kA/s. | Raw rate features do not transfer. They need scaling before any use on MAST. |
+
+## Thomson scattering in the frame table
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F34 | Interpolation in time matters on MAST and hardly at all on DIII-D. | Median distance from a frame to the nearest valid core slice: 0.3 ms on DIII-D, 1.4 ms on MAST (99th percentile 20 ms and 17 ms). On MAST the interpolated and nearest core pressures differ visibly on frames more than 10 ms from a slice. [notebook section 4] | The interpolated form is adopted, consistent with F18. |
+| F35 | Coverage has levelled off by 20 ms for the core system; the DIII-D edge system needs 25 ms. | Core within 20 ms: 98.5% / 98.7% / 99.1% of frames (training, DIII-D test, MAST); within 10 ms: 97.3% / 97.8% / 91.8%. Edge within 20 ms: 98.0% / 97.7% / 98.2%; within 10 ms: 76.3% / 75.5% / 91.0%. Median gap between valid DIII-D edge slices is 25.5 ms. Frames in shots with no valid slice: core 0.44% / 0.34% / 0.08%, edge 0.70% / 0.48% / 0%. | Validity uses 20 ms for core and 25 ms for edge, derived from the stored distance columns. No rebuild is needed. |
+| F36 | 69 shots have no valid core profile within tolerance on any frame. | 62 training, 6 DIII-D test, 1 MAST. 63 shots have no valid edge profile. QA reported 53 training shots with a coverage value of zero plus 15 with no value, because no slice lies inside the EFIT window; the frame table counts slices at any time. [T7] | The frame table count stands; the difference is one of definition on one- and two-frame shots (open item 7, resolved). |
+| F37 | DIII-D core Thomson summaries contain rare extreme values. | 99th percentile against maximum on training: `ts_core_te_peak` 3,967 against 12,212 eV; `ts_core_ne_peak` 1.0e20 against 8.4e20 m^-3; `ts_core_pe_mean` 17.1 against 251 kPa. MAST has none (`ts_core_pe_mean` maximum 7.5 kPa). | Thomson inputs are clipped or scaled robustly before use. |
+| F38 | The "edge" Thomson system does not measure the same region on the two machines. | Median `ts_edge_te_mean`: 1,980 eV on DIII-D training (1st percentile 462), 143 eV on MAST. | Edge summaries are not used as inputs as they are. Profile descriptors on a normalized radius replace them. |
+
+## Ranges across machines
+
+These rows compare MAST test inputs with DIII-D training inputs. Nothing was fitted on test
+inputs.
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F39 | MAST input values lie inside the DIII-D ranges. | `ip__mean` 81 to 1,110 kA against a DIII-D magnitude up to 2,233. `sol__mean` -48 to 43 against -67 to 66 kA. Core `te_peak` median 699 against 1,513 eV, 99th percentile 1,387 against 3,967. `ne_peak` median 2.95e19 against 3.77e19 m^-3. `pe_mean` median 1.42 against 3.58 kPa, 99th percentile 4.7 against 17.1. | No extrapolation in these raw values. MAST occupies the low-temperature, low-pressure end of the DIII-D range. |
+| F40 | The MAST toroidal field current is nearly constant and runs one way. | `tf__mean` 1st percentile -85.0, median -84.8, 99th percentile -69.4 kA. `ip_direction` is +1 and `tf_direction` -1 on every MAST shot (QA: Ip minimum at or above 0 and toroidal field maximum at or below 0 on all 1,206). DIII-D runs both directions of each. | On MAST, variation in q95 comes from Ip and shape. The conversion from current to field in tesla is set per machine. |
+
+## Relationships (DIII-D training)
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F41 | Simple physical combinations carry much of the signal. | Over 64,616 frames from 300 shots with `ip_over_peak` above 0.5: flux range against absolute Ip, r = 0.900; q95 against absolute tf over absolute Ip, r = 0.867; betaN against core `pe_mean`, r = 0.747 (63,870 frames with a valid profile). The flux range shows vertical streaks at fixed Ip. [notebook section 6] | Supports physics combinations for the scalars. The streaks are flux changing at constant plasma current, which the coil-flux subtraction is expected to remove. |
+| F42 | Coil currents are strongly correlated with each other and with Ip. | Over 1,504,702 frames: F1A with F1B 0.961, F6A with F6B 0.935, Ip with F6A 0.941 and with F6B 0.926 in magnitude. The toroidal field current is uncorrelated with the rest. Every coil's 1st to 99th percentile range crosses zero. | Linear models need regularization. Dividing coil currents by Ip removes the dominant shared factor. Coil currents reversing together with Ip is consistent with a sign rule tied to the Ip direction, to be confirmed by the coil-flux phase. |
+
+## Labels and frame filters
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F43 | Label extremes lie outside the 1st to 99th percentile band. | q95 2.91 to 11.76 (extremes 0.17 and 23.9); betaN 0.08 to 3.31 (-14.5 and 16.7); li 0.64 to 1.73 (0 and 20.8). | Fewer than 1% of frames on each tail. Feeds the label-quality step. |
+| F44 | Some training frames have almost no plasma current. | `ip_over_peak` minimum 0.000 on training (1st percentile 0.363); minimum 0.113 on DIII-D test and 0.121 on MAST. | A minimum-Ip rule is needed for training frames, since the plasma flux is divided by Ip. The affected frames are end-of-shot ramp-downs: 13 below 0.1 and 1,303 below 0.2 (open item 9, resolved). |
+
 ## Use of MAST labels
 
 The three MAST sample shots in the starter kit carry equilibrium labels. In this phase they
@@ -98,8 +164,39 @@ phase of this project uses it for those purposes.
    organizers' fix but with an Ip rise outside 0 to 60 ms.
 2. Resolved. After the alignment, Ip is positive on 6,420 training and 798 test shots and
    negative on 603 and 76; the mixed group fell from 616 shots to 18 (F14).
-3. 15 training shots have no computable Thomson coverage value.
-4. The toroidal field current of the two shots with q95 below 1 is to be compared with the
-   typical value.
+3. Resolved with item 7. The 15 training shots have no computable QA coverage value because
+   no Thomson slice lies inside their EFIT window; 10 of them have no valid slice within
+   20 ms of any frame either, and 5 are one-frame shots with a valid slice within 1.2 ms.
+4. Resolved with item 8. On the two shots with q95 below 1 the toroidal field signal is
+   implausible for their plasma current.
 5. Frame-level counts of failed and placeholder labels (F21).
 6. The repeat-shot hypothesis (F09) and the share of changing-current frames on MAST (F13).
+7. Resolved. The 62 training shots without a valid core Thomson profile (frame table) and
+   the 53 reported by QA differ by definition only, on one- and two-frame shots. Frame table:
+   `ts_core_any_valid` is false when no frame has a valid slice (at least half the channels
+   with Te and ne present) within 20 ms, counting slices at any time. QA 0.7: the coverage
+   value counts only slices inside the EFIT window and is absent when none lies there
+   (15 shots). Shot by shot: 52 shots have a zero QA value and no valid slice under either
+   definition; 10 of the 15 shots without a QA value have no valid slice within 20 ms either
+   (52 + 10 = 62); 5 of the 15 are one-frame shots whose single frame is within 1.2 ms of a
+   valid slice (`316f541fd6`, `8c2c362dfd`, `98106629ab`, `b722acb466`, `d4fc5902f4`); and one
+   two-frame shot, `f0a33e7fe4`, has five slices inside its 20 ms window, none valid, with
+   valid slices 8 to 9 ms outside it. The frame table count of 62 stands. [notebook 02
+   section 8]
+8. Resolved. 1,592 training frames have `tf__mean` below 50 kA in magnitude, in 11 shots.
+   Nine are real low-field or field-ramp shots: `d597b8ec22`, `8dffbfc783` and `e869356e6e`
+   run the whole shot at 46 to 50 kA, `6fb57bed55` and `4173ac3d16` at 30 kA, `c667d63ad1`
+   at 34 to 43 kA, and `341645ad3f`, `2c59574ab1` and `2da8d37fa8` fall to 44 to 50 kA over
+   their last 13 to 39 frames; their q95 is 1.9 to 3.9. The other two are the shots with q95
+   below 1, `5df1630aa7` and `955c35c962`: the field signal runs at 3 to 27 kA (median about
+   18 kA) through the whole shot while the plasma current is about 1,150 kA, which is
+   implausible for that current, and their labels scale with the signal (q95 median 0.64 and
+   0.72, maximum about 1.0; betaN median 6.0 and 6.2). The two shots are candidates for
+   exclusion from scalar training; their flux maps are still to be checked; the decision
+   belongs to the label-quality step (B5). They are left out of the label-quality statistics
+   (F21). [notebook 02 section 8]
+9. Resolved. Frames with `ip_over_peak` below 0.1: 13 in 11 shots, all in the last tenth of
+   their shot. Below 0.2: 1,303 frames (0.084% of training) in 277 shots, 1,229 in the last
+   tenth, 63 elsewhere and 11 in the first tenth; at most 45 frames in one shot. They are
+   end-of-shot frames where the plasma current is ramping down. A minimum-Ip rule for
+   training frames (F44) removes under 0.1% of frames. [notebook 02 section 8]

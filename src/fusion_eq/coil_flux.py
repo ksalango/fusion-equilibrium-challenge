@@ -48,7 +48,11 @@ MU0 = 4e-7 * np.pi
 A_PER_KA = 1000.0
 # Geometric mean distance of a rectangle from itself, as a fraction of (width + height).
 GMD_FACTOR = 0.2235
-DEFAULT_N_FILAMENTS = 4
+# Filaments along the shorter side of an element. Chosen on 7 October 2026 from the K2
+# convergence runs: between 16 and 32 the coil flux changes by 7.6e-5 of its range on DIII-D
+# nodes away from the coils and 2.7e-4 within one cell of a coil (MAST 1.7e-6 and 1.5e-5);
+# 4 failed the 1e-3 criterion on DIII-D and 8 passed it with 3.5e-4.
+DEFAULT_N_FILAMENTS = 16
 GEOMETRY_COLUMNS = ("coil_name", "coil_input_column", "coil_R", "coil_Z",
                     "coil_width", "coil_height", "coil_angle1", "coil_angle2")
 GRID_COLUMNS = ("efit_grid_R", "efit_grid_Z")
@@ -378,7 +382,8 @@ def build_green_table(machine: str | MachineConfig, geometry: CoilGeometry, grid
         machine: Machine name or configuration.
         geometry: Coil elements.
         grid_r, grid_z: Grid axes in metres.
-        n_filaments: Filaments per side of each element.
+        n_filaments: Filaments along the shorter side of each element (``filament_counts``);
+            the default is the subdivision chosen from the K2 convergence runs.
 
     Raises:
         ValueError: when a geometry column has no turn convention on the machine.
