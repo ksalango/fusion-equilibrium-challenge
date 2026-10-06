@@ -268,6 +268,37 @@ interpolate profiles onto a fixed set of positions per shot, using `thomson_chor
 - MAST `efit_times` and `magnetics_time` are float32. Casting to float64 before any arithmetic
   avoids precision surprises when comparing time axes.
 
+### 4.8 Coil skew angles (`coil_angle1`, `coil_angle2`)
+
+The two angles are EFIT's `AF` and `AF2` shear angles in degrees (starter README). In the
+data only six DIII-D coils are skewed and no coil has both angles nonzero: F5A/F5B have
+`coil_angle1` = +45/-45, F6A/F6B have `coil_angle2` = +92.4/-92.4, F7A/F7B have
+`coil_angle2` = +108.06/-108.06. Every other DIII-D coil and every MAST element has 0 and 0.
+The A and B coils of a pair carry opposite signs, as a mirror in Z requires.
+
+Convention, confirmed against the EFIT filament routine (public translation in the SPC
+`gdat` code) and implemented in `fusion_eq.coil_flux.element_filaments`:
+
+- `coil_angle1` tilts the top and bottom sides from the horizontal. A point at radial
+  offset u from the centre is shifted in Z by `u * tan(angle1)`. The sides stay vertical;
+  `coil_width` is the horizontal extent and `coil_height` the vertical extent of the sides.
+- `coil_angle2` is the angle of the left and right sides from the horizontal. A point at
+  vertical offset v from the centre is shifted in R by `v / tan(angle2)`. The top and
+  bottom stay horizontal. 90 degrees gives no shift, which is why EFIT writes 90 as 0.
+- 0 means no skew. Both shears preserve the area `coil_width * coil_height`.
+- An element with both angles nonzero is not supported and raises.
+
+Flux calculation (`docs/COIL_FLUX.md`): each element is divided into filaments on the
+unsheared rectangle and then sheared, n along the shorter side and proportionally more
+along the longer one so that sub-cells are near square; the distance between a filament and an
+evaluation point is floored at 0.2235 times the sum of the sub-cell width and height, the
+geometric mean distance of the sub-cell from itself. Currents enter the Green's tables in
+kA and patterns are stored per kA of a column's value. Turn conventions:
+shaping coils `shared` (the column holds total ampere-turns, split equally over the
+elements), MAST solenoid `per_element` (656 single-turn elements each carrying the column
+value), DIII-D `magnetics_ECOILA` one element, scale to be fitted. Reference radii for the
+label-free checks, provisional: DIII-D 1.67 m, MAST 0.85 m (published major radii).
+
 ## 5. Where the README and the data disagree
 
 Contradictions are recorded with evidence and left unresolved.

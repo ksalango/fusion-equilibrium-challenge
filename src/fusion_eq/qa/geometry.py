@@ -2,37 +2,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections import Counter
 
 import numpy as np
 
-from fusion_eq.io import Shot
+from fusion_eq.io import Shot, sha256_of_arrays
+
+__all__ = ["check_coil_geometry", "check_grid", "sha256_of_arrays", "COIL_COLUMNS"]
 
 COIL_COLUMNS = ("coil_name", "coil_input_column", "coil_R", "coil_Z",
                 "coil_width", "coil_height", "coil_angle1", "coil_angle2")
 EXPECTED_GRID_LENGTH = 65
-
-
-def sha256_of_arrays(*arrays) -> str:
-    """Hex SHA-256 over the exact bytes of several arrays, in order.
-
-    Numeric arrays are hashed as float64; string arrays as UTF-8 joined by NUL.
-    A missing array (None) contributes a fixed marker so the hash stays defined.
-    """
-    h = hashlib.sha256()
-    for a in arrays:
-        if a is None:
-            h.update(b"<none>")
-            continue
-        a = np.asarray(a)
-        if a.dtype.kind in ("U", "S", "O"):
-            h.update("\x00".join(str(x) for x in a.ravel()).encode())
-        else:
-            h.update(np.ascontiguousarray(a, dtype=np.float64).tobytes())
-        h.update(b"|")
-    return h.hexdigest()
 
 
 def check_coil_geometry(shot: Shot) -> dict:

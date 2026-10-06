@@ -18,6 +18,7 @@ Raw files are never written to.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -77,6 +78,27 @@ class Shot:
     def n_frames(self) -> int:
         """Number of EFIT timeslices, from ``efit_times``."""
         return int(len(self.data["efit_times"]))
+
+
+def sha256_of_arrays(*arrays) -> str:
+    """Hex SHA-256 over the exact bytes of several arrays, in order.
+
+    Numeric arrays are hashed as float64; string arrays as UTF-8 joined by NUL.
+    A missing array (None) contributes a fixed marker so the hash stays defined.
+    Used to confirm that geometry and grids are identical across shots and builds.
+    """
+    h = hashlib.sha256()
+    for a in arrays:
+        if a is None:
+            h.update(b"<none>")
+            continue
+        a = np.asarray(a)
+        if a.dtype.kind in ("U", "S", "O"):
+            h.update("\x00".join(str(x) for x in a.ravel()).encode())
+        else:
+            h.update(np.ascontiguousarray(a, dtype=np.float64).tobytes())
+        h.update(b"|")
+    return h.hexdigest()
 
 
 def parse_shot_filename(path: Path | str) -> tuple[MachineConfig, str]:

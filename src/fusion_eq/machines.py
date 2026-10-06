@@ -17,6 +17,23 @@ IP_TIME_COLUMN = "magnetics_plasma_current_times"
 
 
 @dataclass(frozen=True)
+class CoilConvention:
+    """How a current column's value is divided among its geometry elements.
+
+    Attributes:
+        turns: ``"shared"`` when the column holds the total current of all its elements
+            (kA-turn, split equally over the elements), ``"per_element"`` when every
+            element carries the column's value (kA per turn).
+        scale: Multiplier applied to the column's current before the flux calculation.
+            1.0 until a fit says otherwise; the DIII-D solenoid scale is the open
+            quantity of the coil-flux phase.
+    """
+
+    turns: str
+    scale: float = 1.0
+
+
+@dataclass(frozen=True)
 class MachineConfig:
     """Conventions of one tokamak in the challenge dataset.
 
@@ -40,6 +57,11 @@ class MachineConfig:
         lcfs_padding: Expected padding value of ``efit_lcfs_r/z`` beyond
             ``efit_lcfs_n``, ``"zero"`` or ``"nan"``.
         mask_file: File name of the scorer's plasma-envelope mask for this machine.
+        solenoid_turns: Turn convention of the solenoid column, ``"shared"`` or
+            ``"per_element"`` (see ``CoilConvention``). Shaping coils are always
+            ``"shared"``: their columns hold total ampere-turns.
+        reference_radius_m: Published major radius of the machine at Z = 0, in metres,
+            the provisional reference point of the coil-flux checks.
     """
 
     name: str
@@ -53,6 +75,21 @@ class MachineConfig:
     ip_has_own_time_axis: bool
     lcfs_padding: str
     mask_file: str
+    solenoid_turns: str
+    reference_radius_m: float
+
+    def coil_convention(self, current_column: str) -> CoilConvention:
+        """Turn convention of a current column that has coil geometry.
+
+        Raises:
+            KeyError: for a column without geometry (plasma current, toroidal field,
+                extra currents) or an unknown column.
+        """
+        if current_column in self.shaping_coil_columns:
+            return CoilConvention(turns="shared")
+        if current_column == self.solenoid_column:
+            return CoilConvention(turns=self.solenoid_turns)
+        raise KeyError(f"{current_column!r} has no coil geometry on {self.name}")
 
     @property
     def ip_column(self) -> str:
@@ -88,6 +125,11 @@ DIII_D = MachineConfig(
     ip_has_own_time_axis=True,
     lcfs_padding="zero",
     mask_file="d3d_envelope.npz",
+    # One lumped rectangle; the README gives the column in kA and calls the turn count
+    # ambiguous (48 single-turn elements in EFIT). Its scale is the quantity the coil-flux
+    # phase fits, so the convention here only fixes what "scale 1" means.
+    solenoid_turns="per_element",
+    reference_radius_m=1.67,
 )
 
 MAST = MachineConfig(
@@ -102,6 +144,9 @@ MAST = MachineConfig(
     ip_has_own_time_axis=False,
     lcfs_padding="nan",
     mask_file="mast_envelope.npz",
+    # 656 single-turn elements sharing one column in kA: every element carries the value.
+    solenoid_turns="per_element",
+    reference_radius_m=0.85,
 )
 
 MACHINES: dict[str, MachineConfig] = {m.name: m for m in (DIII_D, MAST)}
