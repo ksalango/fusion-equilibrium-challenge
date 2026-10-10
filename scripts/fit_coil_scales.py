@@ -2,7 +2,8 @@
 
 Analyses D3b, D4, D9 and D5 of ``docs/COIL_FLUX.md``. Reads the Green's tables from
 ``--green-dir``, a sample of DIII-D training shots (and the eight reference shots of
-D3 chosen from the QA table) and 20 MAST test shots, and writes to ``--out``:
+D3, chosen from the frame table's shot index by ``coil_scales.reference_shots``, the
+same rule the review notebook uses) and 20 MAST test shots, and writes to ``--out``:
 
 - ``coil_frames.parquet``: one row per analysed frame with the current ratio (K3), the
   agreement outside the plasma away from and near the coils (K5), the remainder
@@ -32,26 +33,14 @@ import pandas as pd
 from fusion_eq import coil_scales as cs, io, starter_kit
 from fusion_eq.coil_flux import GEOMETRY_COLUMNS, CoilGeometry, GreenTable, currents_at_frames, near_coil_mask
 from fusion_eq.dataset import REPO_ROOT, default_data_root, filter_shots, list_shots, run_info, select_shots
+from fusion_eq.frame_table import DEFAULT_TABLE_ROOT
 from fusion_eq.machines import machine_config
-from fusion_eq.profile import QA_RATE_SPLIT_MS
 
 DEFAULT_GREEN_DIR = REPO_ROOT.parent / "data" / "processed" / "green"
 DEFAULT_OUT = REPO_ROOT / "reports" / "coil_flux"
-DEFAULT_QA_TABLE = REPO_ROOT / "reports" / "qa" / "qa_per_shot.parquet"
-FLAT_TOP = 0.9
+DEFAULT_SHOT_INDEX = DEFAULT_TABLE_ROOT / "shot_index.parquet"
+FLAT_TOP = cs.FLAT_TOP_LEVEL
 K5_REVIEW_FRACTION = 0.05
-
-
-def reference_shots(qa_path: Path) -> dict[str, list[str]]:
-    """The eight D3 reference shots: 3 positive-Ip 20 kHz, 3 negative-Ip, 2 at 2 kHz."""
-    qa = pd.read_parquet(qa_path)
-    train = qa[(qa["split"] == "diii_d_train") & qa["error"].isna() & (qa["time_n_frames"] >= 30)]
-    fast = train["time_magnetics_dt_median_ms"] <= QA_RATE_SPLIT_MS
-    positive = train["cur_plasma_current_min"] >= 0
-    negative = train["cur_plasma_current_max"] <= 0
-    pick = lambda sub, n: sorted(sub["shot"].astype(str))[:n]  # noqa: E731
-    return {"positive_20khz": pick(train[fast & positive], 3), "negative_ip": pick(train[negative], 3),
-            "rate_2khz": pick(train[~fast & positive], 2)}
 
 
 def frame_sample(n_frames: int, n: int) -> np.ndarray:
@@ -98,7 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--data-root", type=Path, default=default_data_root())
     parser.add_argument("--green-dir", type=Path, default=DEFAULT_GREEN_DIR)
-    parser.add_argument("--qa-table", type=Path, default=DEFAULT_QA_TABLE)
+    parser.add_argument("--shot-index", type=Path, default=DEFAULT_SHOT_INDEX,
+                        help="shot_index.parquet of the frame-table build the reference shots are chosen from")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--n-shots", type=int, default=50, help="DIII-D training shots for the fit")
     parser.add_argument("--n-mast-shots", type=int, default=20)
@@ -123,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     near = near_coil_mask(geometry, table.grid_r, table.grid_z)
 
     files = list_shots(args.data_root, "diii_d_train")
-    refs = reference_shots(args.qa_table)
+    refs = cs.reference_shots(pd.read_parquet(args.shot_index))
     ref_ids = [s for ids in refs.values() for s in ids]
     ref_files = filter_shots(files, ref_ids)
     fit_files = select_shots([f for f in files if f not in set(ref_files)], args.n_shots, args.seed)

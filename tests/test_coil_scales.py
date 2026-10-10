@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from fusion_eq import coil_flux as cf, coil_scales as cs, io, starter_kit
@@ -11,6 +12,54 @@ from tests.conftest import make_d3d_shot, write_shot
 
 GRID_R = np.linspace(0.84, 2.54, 65)
 GRID_Z = np.linspace(-1.6, 1.6, 65)
+
+
+def shot_index(rows):
+    """Shot index rows ``(split, shot, n_frames, mag_rate_hz, ip_direction, error)``."""
+    return pd.DataFrame(rows, columns=["split", "shot", "n_frames", "mag_rate_hz", "ip_direction", "error"])
+
+
+def test_reference_shots_picks_three_kinds_in_sorted_order_without_overlap():
+    index = shot_index([
+        ("diii_d_train", "b", 100, 20000, 1, None), ("diii_d_train", "a", 100, 20000, 1, None),
+        ("diii_d_train", "c", 100, 20000, 1, None), ("diii_d_train", "d", 100, 20000, 1, None),
+        ("diii_d_train", "n2", 100, 2000, -1, None), ("diii_d_train", "n1", 100, 20000, -1, None),
+        ("diii_d_train", "s1", 100, 2000, 1, None), ("diii_d_train", "s2", 100, 2000, 1, None),
+        ("diii_d_train", "s3", 100, 2000, 1, None),
+        ("diii_d_train", "short", 10, 20000, 1, None),           # too few frames
+        ("diii_d_train", "bad", 100, 20000, 1, "ValueError: x"),  # build error
+        ("diii_d_train", "mixed", 100, 20000, 0, None),           # mixed Ip direction
+        ("diii_d_public_test", "0", 100, 20000, 1, None),         # wrong split
+    ])
+    refs = cs.reference_shots(index)
+    assert refs == {"positive_20khz": ["a", "b", "c"], "negative_ip": ["n1", "n2"], "rate_2khz": ["s1", "s2"]}
+    assert cs.reference_shots(index, n_fast_positive=1, n_negative=1, n_slow=3) == {
+        "positive_20khz": ["a"], "negative_ip": ["n1"], "rate_2khz": ["s1", "s2", "s3"]}
+    assert cs.reference_shots(index.iloc[:0]) == {"positive_20khz": [], "negative_ip": [], "rate_2khz": []}
+
+
+def test_reference_frames_rising_mid_flat_top_late():
+    trace = np.concatenate([np.linspace(0.0, 1.0, 11), np.ones(9), np.linspace(1.0, 0.0, 11)])
+    frames = cs.reference_frames(trace)
+    assert list(frames) == ["rising", "flat_top", "late"]
+    assert frames["rising"] == 5 and trace[5] == pytest.approx(0.5) and trace[4] < 0.5
+    assert frames["late"] == 25 and trace[25] == pytest.approx(0.5) and trace[26] < 0.5
+    flat = np.flatnonzero(trace >= 0.9)
+    assert frames["flat_top"] == flat[flat.size // 2] and trace[frames["flat_top"]] == 1.0
+    # NaN frames never qualify and the rise can start inside the window.
+    late_start = np.concatenate([[np.nan], np.linspace(0.6, 1.0, 5), [0.95, 0.7, 0.4]])
+    assert cs.reference_frames(late_start) == {"rising": 1, "flat_top": 5, "late": 7}
+
+
+def test_reference_frames_fallbacks():
+    # Never reaches the flat-top level: the peak stands in for the flat-top frame.
+    low = np.array([0.1, 0.55, 0.6, 0.7, 0.65, 0.55, 0.2])
+    assert cs.reference_frames(low) == {"rising": 1, "flat_top": 3, "late": 5}
+    # Choices coincide (one frame above the rise level): first, middle, last frame.
+    spike = np.array([0.1, 0.1, 0.1, 1.0, 0.1, 0.1])
+    assert cs.reference_frames(spike) == {"rising": 0, "flat_top": 3, "late": 5}
+    with pytest.raises(ValueError):
+        cs.reference_frames([0.5, 1.0])
 
 
 def test_sign_rule_from_ratios():
@@ -133,6 +182,7 @@ def test_analyze_frame_on_synthetic_shot(tmp_path, starter):
     currents = np.linspace(0.5, 1.5, len(table.columns))
     a = cs.analyze_frame(psi, GRID_R, GRID_Z, DIII_D, env, table, currents, ip_ka=1000.0, near_coil=near, scorer=scorer)
     assert a.boundary_found and a.inside.any()
+    assert a.contour.ndim == 2 and a.contour.shape[1] == 2 and a.contour.shape[0] >= 3
     assert np.isfinite(a.current_a) and np.isfinite(a.ratio)
     # The synthetic map is a negative Gaussian (axis at the minimum, as on DIII-D), so the
     # stored map carries negative current density and the orientation flips it.
@@ -144,7 +194,19 @@ def test_analyze_frame_on_synthetic_shot(tmp_path, starter):
     assert a.flux_range == pytest.approx(psi.max() - psi.min())
     forced = cs.analyze_frame(psi, GRID_R, GRID_Z, DIII_D, env, table, currents, 1000.0, near, scorer, orientation=1.0)
     assert forced.orientation == 1.0 and np.allclose(forced.oriented_psi, psi)
+    # The same stored map with a negative Ip is a negative-current discharge stored as it is: the
+    # physical orientation keeps it, so that the coil flux from the (negative) measured currents
+    # is compared in the same frame, and the remainder's hill is a minimum.
+    negative = cs.analyze_frame(psi, GRID_R, GRID_Z, DIII_D, env, table, -currents, ip_ka=-1000.0, near_coil=near, scorer=scorer)
+    assert negative.orientation == 1.0 and negative.ratio == pytest.approx(-a.ratio) and negative.ratio > 0
+    assert np.allclose(negative.oriented_psi, psi) and np.allclose(negative.target, -a.target, equal_nan=True)
+    assert negative.orientation == cs.orientation_from_rule(-1, -1000.0) and a.orientation == cs.orientation_from_rule(-1, 1000.0)
     rem = cs.remainder_metrics(a.oriented_psi, np.zeros_like(psi), GRID_R, GRID_Z, DIII_D, env, scorer,
                                float(raw["efit_r_axis"][0]), float(raw["efit_z_axis"][0]), 1000.0)
     assert rem["rem_axis_dist_m"] < 0.06 and rem["rem_amplitude"] > 0
     assert rem["rem_amplitude_over_ip"] == pytest.approx(rem["rem_amplitude"] / 1000.0)
+    rem_neg = cs.remainder_metrics(negative.oriented_psi, np.zeros_like(psi), GRID_R, GRID_Z, DIII_D, env, scorer,
+                                   float(raw["efit_r_axis"][0]), float(raw["efit_z_axis"][0]), -1000.0)
+    assert rem_neg["rem_axis_dist_m"] == pytest.approx(rem["rem_axis_dist_m"])
+    assert rem_neg["rem_amplitude"] == pytest.approx(rem["rem_amplitude"])
+    assert rem_neg["rem_amplitude_over_ip"] == pytest.approx(rem["rem_amplitude_over_ip"])

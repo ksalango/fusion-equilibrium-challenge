@@ -12,7 +12,10 @@ without a per-frame constant, accumulated as normal equations so that any number
 frames fits in memory (D4, K6). ``sign_rule`` turns the per-shot ratios into the one
 rule, stated in terms of the direction of Ip, that orients every stored map (K4).
 ``mirror_difference`` is check K8 and ``reference_ratios`` the label-free MAST checks
-of D5 (K9). Labels enter only as test targets, never the calculation.
+of D5 (K9). ``reference_shots`` and ``reference_frames`` choose the eight DIII-D shots
+and the three frames per shot of the single-frame tests (D3) from the frame table, so
+that the review notebook and the fit script look at the same frames. Labels enter only
+as test targets, never the calculation.
 """
 
 from __future__ import annotations
@@ -20,12 +23,91 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from fusion_eq import grad_shafranov as gs
 from fusion_eq.coil_flux import MU0, GreenTable
 from fusion_eq.machines import MachineConfig
 
 A_PER_KA = 1000.0
+# Recording rates of the DIII-D magnetics (frame table ``mag_rate_hz``).
+FAST_RATE_HZ = 20_000
+SLOW_RATE_HZ = 2_000
+# A frame is on the flat-top above this fraction of the shot's peak Ip; the rise is taken
+# to have started, and the ramp-down not to have finished, above ``RISE_LEVEL``.
+FLAT_TOP_LEVEL = 0.9
+RISE_LEVEL = 0.5
+REFERENCE_PHASES = ("rising", "flat_top", "late")
+
+
+# ----------------------------------------------------------- reference shots and frames
+def reference_shots(index: pd.DataFrame, n_fast_positive: int = 3, n_negative: int = 3, n_slow: int = 2,
+                    min_frames: int = 30) -> dict[str, list[str]]:
+    """The DIII-D reference shots of analysis D3 from the frame table's shot index.
+
+    Three kinds, each the first shots in sorted id order among the training shots that
+    built without error and have at least ``min_frames`` frames: positive Ip at the
+    fast recording rate, negative Ip at any rate, and positive Ip at the slow rate. A
+    shot is listed under one kind only.
+
+    Args:
+        index: ``shot_index.parquet`` of a frame-table build (columns ``split``,
+            ``shot``, ``n_frames``, ``mag_rate_hz``, ``ip_direction``, ``error``).
+
+    Returns:
+        ``{"positive_20khz": [...], "negative_ip": [...], "rate_2khz": [...]}``.
+    """
+    train = index[(index["split"] == "diii_d_train") & index["error"].isna() & (index["n_frames"] >= min_frames)]
+    rate = train["mag_rate_hz"].astype("Int64")
+    direction = train["ip_direction"].astype("Int64")
+    kinds = {
+        "positive_20khz": (train[(rate == FAST_RATE_HZ) & (direction == 1)], n_fast_positive),
+        "negative_ip": (train[direction == -1], n_negative),
+        "rate_2khz": (train[(rate == SLOW_RATE_HZ) & (direction == 1)], n_slow),
+    }
+    out: dict[str, list[str]] = {}
+    taken: set[str] = set()
+    for kind, (sub, n) in kinds.items():
+        ids = [s for s in sorted(sub["shot"].astype(str)) if s not in taken][:n]
+        taken.update(ids)
+        out[kind] = ids
+    return out
+
+
+def reference_frames(ip_over_peak, flat_top: float = FLAT_TOP_LEVEL, rise: float = RISE_LEVEL) -> dict[str, int]:
+    """Three frames of one shot for the single-frame tests: rising, mid flat-top, late.
+
+    ``rising`` is the first frame at or above ``rise`` of the peak, ``flat_top`` the
+    middle of the frames at or above ``flat_top``, and ``late`` the last frame at or
+    above ``rise``, so that every frame still holds a plasma the scorer can bound. When
+    the trace never reaches a level, the frame of its maximum stands in; when two
+    choices coincide, the three frames fall back to the first, middle and last frame.
+
+    Args:
+        ip_over_peak: ``(frames,)`` absolute Ip over the shot's peak, in frame order
+            (frame table column ``ip_over_peak``). NaN entries never qualify.
+
+    Returns:
+        Frame indices keyed by ``REFERENCE_PHASES``.
+
+    Raises:
+        ValueError: with fewer than three frames.
+    """
+    x = np.asarray(ip_over_peak, dtype=np.float64).ravel()
+    n = x.size
+    if n < 3:
+        raise ValueError("a reference shot needs at least three frames")
+    finite = np.where(np.isfinite(x), x, -np.inf)
+    peak = int(np.argmax(finite))
+    above_rise = np.flatnonzero(finite >= rise)
+    flat = np.flatnonzero(finite >= flat_top)
+    rising = int(above_rise[0]) if above_rise.size else peak
+    late = int(above_rise[-1]) if above_rise.size else peak
+    mid = int(flat[flat.size // 2]) if flat.size else peak
+    frames = (rising, mid, late)
+    if len(set(frames)) < 3:
+        frames = (0, n // 2, n - 1)
+    return dict(zip(REFERENCE_PHASES, frames))
 
 
 # -------------------------------------------------------------------------- per frame
@@ -35,8 +117,12 @@ class FrameAnalysis:
 
     Attributes:
         orientation: Sign ``s`` applied to the stored map so that the current density
-            inside the boundary integrates to a positive current.
+            inside the boundary integrates to a current with the sign of the measured
+            Ip: the physical orientation, in which the coil flux from the measured
+            coil currents is directly comparable.
         boundary_found: Whether the scorer returned a closed boundary.
+        contour: The scorer's boundary as an ``(n, 2)`` array of (R, Z) in metres, or
+            None when no boundary was found.
         inside: Bool map of nodes inside the boundary.
         fit_mask: Nodes outside the boundary and not near a coil, with finite target.
         near_coil_mask: Nodes outside the boundary and within one cell of a coil outline.
@@ -51,6 +137,7 @@ class FrameAnalysis:
 
     orientation: float
     boundary_found: bool
+    contour: np.ndarray | None
     inside: np.ndarray
     fit_mask: np.ndarray
     near_coil_mask: np.ndarray
@@ -86,7 +173,9 @@ def analyze_frame(psi_stored, grid_r, grid_z, cfg: MachineConfig, envelope, tabl
         near_coil: Bool map of nodes near a coil outline (``coil_flux.near_coil_mask``).
         scorer: ``starter_kit.scoring()`` namespace.
         orientation: Sign to apply to the stored map; when None, the sign of the
-            integrated current density is used.
+            integrated current density times the sign of Ip is used, which puts the
+            map in the physical orientation whatever the direction of the discharge.
+            Without a finite nonzero Ip the sign of the current alone is used.
     """
     psi = np.asarray(psi_stored, dtype=np.float64)
     grid_r = np.asarray(grid_r, dtype=np.float64)
@@ -98,7 +187,10 @@ def analyze_frame(psi_stored, grid_r, grid_z, cfg: MachineConfig, envelope, tabl
     ip_a = float(ip_ka) * A_PER_KA if np.isfinite(ip_ka) else np.nan
     ratio = current_a / ip_a if np.isfinite(current_a) and np.isfinite(ip_a) and ip_a != 0 else np.nan
     if orientation is None:
-        orientation = float(np.sign(current_a)) if np.isfinite(current_a) and current_a != 0 else 1.0
+        if np.isfinite(ratio) and ratio != 0:
+            orientation = float(np.sign(ratio))
+        else:
+            orientation = float(np.sign(current_a)) if np.isfinite(current_a) and current_a != 0 else 1.0
     oriented = orientation * psi
     plasma = gs.flux_from_current(orientation * j_stored, grid_r, grid_z, inside) if inside.any() \
         else np.zeros_like(psi)
@@ -108,7 +200,8 @@ def analyze_frame(psi_stored, grid_r, grid_z, cfg: MachineConfig, envelope, tabl
     near_mask = outside & np.asarray(near_coil, dtype=bool) & np.isfinite(target)
     c = np.nan_to_num(np.asarray(currents_ka, dtype=np.float64))
     coil_maps = table.patterns * c[:, None, None]
-    return FrameAnalysis(orientation=orientation, boundary_found=contour is not None, inside=inside,
+    return FrameAnalysis(orientation=orientation, boundary_found=contour is not None,
+                         contour=None if contour is None else np.asarray(contour, dtype=np.float64), inside=inside,
                          fit_mask=fit_mask, near_coil_mask=near_mask, current_a=float(current_a),
                          ratio=float(ratio), oriented_psi=oriented, target=target, coil_maps=coil_maps,
                          flux_range=float(np.nanmax(oriented) - np.nanmin(oriented)))
@@ -128,8 +221,10 @@ def sign_rule(ratios, ip_directions) -> dict:
     """The orientation rule from per-shot current ratios and Ip directions (K4).
 
     The rule is ``psi_physical = c * sign(Ip) * psi_stored`` with one constant ``c``.
-    For each shot ``c_shot = sign(ratio) * sign(Ip)``; the rule holds when every
-    finite ``c_shot`` agrees.
+    For each shot ``c_shot = sign(ratio) * sign(Ip)``, which is the sign of the
+    current the stored map carries; the rule holds when every finite ``c_shot``
+    agrees. The per-frame orientation of ``analyze_frame``, ``sign(ratio)``, then
+    equals ``orientation_from_rule(c, Ip)`` on every frame that obeys the rule.
 
     Returns:
         ``c`` (+1, -1, or 0 when inconsistent or empty), ``consistent``,
@@ -219,21 +314,23 @@ def remainder_metrics(oriented_psi, coil_flux_scaled, grid_r, grid_z, cfg: Machi
                       r_axis: float, z_axis: float, ip_ka: float) -> dict:
     """Where the extremum of ``oriented_psi - coil_flux`` sits and how large it is.
 
-    In the physical orientation the plasma current is positive, so the plasma's flux
-    hill is a maximum of the remainder; its O-point is found with the scorer's finder
-    inside the envelope.
+    In the physical orientation the plasma's flux hill has the sign of Ip, so the
+    remainder is multiplied by ``sign(Ip)`` to make the hill a maximum before its
+    O-point is found with the scorer's finder inside the envelope.
 
     Returns:
-        ``rem_axis_dist_m`` (O-point to stored axis), ``rem_amplitude`` (remainder at the
-        O-point minus its mean on the envelope rim), ``rem_amplitude_over_ip`` (per kA).
+        ``rem_axis_dist_m`` (O-point to stored axis), ``rem_amplitude`` (remainder at
+        the O-point minus its mean on the envelope rim, positive for a hill),
+        ``rem_amplitude_over_ip`` (per kA of ``abs(Ip)``).
     """
-    phi = np.asarray(oriented_psi, dtype=np.float64) - np.asarray(coil_flux_scaled, dtype=np.float64)
+    direction = -1.0 if np.isfinite(ip_ka) and ip_ka < 0 else 1.0
+    phi = direction * (np.asarray(oriented_psi, dtype=np.float64) - np.asarray(coil_flux_scaled, dtype=np.float64))
     r_o, z_o, iz, ir, _ = scorer.o_point.find_o_point(phi, grid_r, grid_z, envelope.mask_coarse)
     rim = envelope.mask_coarse & ~scorer.o_point._erode(envelope.mask_coarse, 1)
     base = float(np.mean(phi[rim])) if rim.any() else 0.0
     amplitude = float(phi[iz, ir] - base)
     return {"rem_axis_dist_m": float(np.hypot(r_o - r_axis, z_o - z_axis)), "rem_amplitude": amplitude,
-            "rem_amplitude_over_ip": amplitude / ip_ka if np.isfinite(ip_ka) and ip_ka != 0 else np.nan}
+            "rem_amplitude_over_ip": amplitude / abs(ip_ka) if np.isfinite(ip_ka) and ip_ka != 0 else np.nan}
 
 
 # ----------------------------------------------------------------------- mirror (K8)
