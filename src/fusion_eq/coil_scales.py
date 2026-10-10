@@ -7,9 +7,11 @@ flux at the nodes outside the boundary is subtracted from the oriented true map,
 what remains is compared with the calculated coil flux (K5). Nodes within one grid
 cell of a coil outline are reported separately and excluded from the fit.
 
-Across frames (``ScaleFit``): least squares for one scale per current column, with or
-without a per-frame constant, accumulated as normal equations so that any number of
-frames fits in memory (D4, K6). ``sign_rule`` turns the per-shot ratios into the one
+Across frames (``ScaleFit``): least squares of one ``FitVariant`` (per-coil scales,
+the solenoid alone, a shared shaping scale, a flat solenoid term, each with or without
+a per-frame constant), accumulated from per-frame ``FrameNormal`` sums so that any
+number of frames fits in memory and every variant's residual on any frame follows
+from the same sums (D4, K5, K6). ``sign_rule`` turns the per-shot ratios into the one
 rule, stated in terms of the direction of Ip, that orients every stored map (K4).
 ``mirror_difference`` is check K8 and ``reference_ratios`` the label-free MAST checks
 of D5 (K9). ``reference_shots`` and ``reference_frames`` choose the eight DIII-D shots
@@ -20,10 +22,11 @@ as test targets, never the calculation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
 from fusion_eq import grad_shafranov as gs
 from fusion_eq.coil_flux import MU0, GreenTable
@@ -247,66 +250,308 @@ def orientation_from_rule(c: float, ip_ka: float) -> float:
 
 
 # -------------------------------------------------------------------------- scale fit
-@dataclass
-class ScaleFit:
-    """Least-squares scales, one per current column, accumulated frame by frame.
+FLAT_PARAMETER = "flat"
+SHARED_PARAMETER = "shared"
 
-    Minimises ``sum_frames sum_mask (target - sum_c s_c coil_c [- b_frame])^2``. With
-    ``with_constant`` the per-frame constants are eliminated exactly by subtracting
-    the mask means of target and of every coil map before accumulation.
+
+@dataclass(frozen=True)
+class FitVariant:
+    """One linear model of the remainder outside the plasma.
+
+    The model at a node is ``sum_c s_c coil_c + a I_sol [+ b_frame]`` with the coil
+    maps at the frame's currents. Each column is in exactly one of ``free`` (its own
+    scale), ``shared`` (one scale for all of them) or ``fixed`` (scale 1), or in none
+    (scale 0, the pattern left out).
+
+    Attributes:
+        name: Variant name.
+        free: Columns with their own scale.
+        shared: Columns sharing one scale.
+        fixed: Columns held at scale 1.
+        flat: Whether the flat solenoid term ``a I_sol``, the same at every node, is
+            fitted (one coefficient for all frames, in Wb/rad per kA).
+        constant: Whether every frame has its own free constant, eliminated exactly
+            by centring the frame's sums on its fit nodes.
     """
 
+    name: str
+    free: tuple[str, ...] = ()
+    shared: tuple[str, ...] = ()
+    fixed: tuple[str, ...] = ()
+    flat: bool = False
+    constant: bool = False
+
+    @property
+    def parameters(self) -> tuple[str, ...]:
+        names = list(self.free)
+        if self.shared:
+            names.append(SHARED_PARAMETER)
+        if self.flat:
+            names.append(FLAT_PARAMETER)
+        return tuple(names)
+
+    def check(self, columns) -> None:
+        groups = [set(self.free), set(self.shared), set(self.fixed)]
+        for a in range(3):
+            for b in range(a + 1, 3):
+                if groups[a] & groups[b]:
+                    raise ValueError(f"{self.name}: a column is in two groups: {groups[a] & groups[b]}")
+        unknown = (groups[0] | groups[1] | groups[2]) - set(columns)
+        if unknown:
+            raise ValueError(f"{self.name}: unknown columns {sorted(unknown)}")
+
+
+def standard_variants(columns, solenoid_column: str) -> dict[str, FitVariant]:
+    """The eight variants of the coil-scale fit (D4), by name.
+
+    ``per_coil`` is the report's headline variant. The ``*_constant`` variants add a
+    free constant per frame. ``solenoid_flat`` replaces the solenoid's rectangle
+    pattern by the flat term; ``solenoid_flat_plus_pattern`` fits both.
+    """
+    columns = tuple(columns)
+    if solenoid_column not in columns:
+        raise ValueError(f"{solenoid_column} is not a column")
+    shaping = tuple(c for c in columns if c != solenoid_column)
+    sol = (solenoid_column,)
+    return {
+        "per_coil": FitVariant("per_coil", free=columns),
+        "per_coil_constant": FitVariant("per_coil_constant", free=columns, constant=True),
+        "solenoid_only": FitVariant("solenoid_only", free=sol, fixed=shaping),
+        "solenoid_only_constant": FitVariant("solenoid_only_constant", free=sol, fixed=shaping, constant=True),
+        "shared_plus_solenoid": FitVariant("shared_plus_solenoid", free=sol, shared=shaping),
+        "shared_plus_solenoid_constant": FitVariant("shared_plus_solenoid_constant", free=sol, shared=shaping, constant=True),
+        "solenoid_flat": FitVariant("solenoid_flat", fixed=shaping, flat=True),
+        "solenoid_flat_plus_pattern": FitVariant("solenoid_flat_plus_pattern", free=sol, fixed=shaping, flat=True),
+    }
+
+
+@dataclass
+class FrameNormal:
+    """Sums over the nodes of one frame of the base regressors against the target.
+
+    The base regressors are the coil maps at the frame's currents, in column order,
+    then the flat solenoid map (``I_sol`` at every node) and a map of ones. Every
+    variant's normal equations, residual and per-frame constant follow from these
+    sums, so the maps need not be kept.
+
+    Attributes:
+        gram: ``(n_base, n_base)`` sums of products of the regressors.
+        moment: ``(n_base,)`` sums of regressor times target.
+        sum_sq: Sum of the squared target.
+        n: Nodes summed over.
+        flux_range: Range of the frame's oriented true map (the K5 normaliser).
+    """
+
+    gram: np.ndarray
+    moment: np.ndarray
+    sum_sq: float
+    n: int
+    flux_range: float
+
+    @classmethod
+    def from_frame(cls, analysis: FrameAnalysis, sol_ka: float, mask=None) -> "FrameNormal":
+        """Sums over ``mask`` (the fit mask when None) of one analysed frame."""
+        m = analysis.fit_mask if mask is None else np.asarray(mask, dtype=bool)
+        y = analysis.target[m]
+        n = int(m.sum())
+        maps = np.asarray(analysis.coil_maps, dtype=np.float64)[:, m]
+        sol = float(sol_ka) if np.isfinite(sol_ka) else 0.0
+        base = np.vstack([maps, np.full((1, n), sol), np.ones((1, n))])
+        return cls(gram=base @ base.T, moment=base @ y, sum_sq=float(y @ y), n=n, flux_range=analysis.flux_range)
+
+    @property
+    def n_base(self) -> int:
+        return int(self.gram.shape[0])
+
+    def centred(self) -> "FrameNormal":
+        """The same sums with the frame's mean removed from the target and every regressor."""
+        if self.n == 0:
+            return self
+        g = self.gram[:, -1]
+        sum_y = self.moment[-1]
+        return FrameNormal(gram=self.gram - np.outer(g, g) / self.n, moment=self.moment - g * sum_y / self.n,
+                           sum_sq=self.sum_sq - sum_y * sum_y / self.n, n=self.n, flux_range=self.flux_range)
+
+    def to_arrays(self) -> dict:
+        return {"gram": self.gram, "moment": self.moment, "sum_sq": self.sum_sq, "n": self.n, "flux_range": self.flux_range}
+
+
+def design(variant: FitVariant, columns) -> tuple[np.ndarray, np.ndarray]:
+    """``(basis, fixed)`` of a variant over the base regressors.
+
+    The model's base coefficients are ``fixed + basis @ theta``: ``basis`` is
+    ``(n_base, n_parameters)`` and ``fixed`` has 1 at the fixed columns.
+    """
+    columns = tuple(columns)
+    variant.check(columns)
+    n_base = len(columns) + 2
+    basis = np.zeros((n_base, len(variant.parameters)))
+    fixed = np.zeros(n_base)
+    for j, c in enumerate(variant.free):
+        basis[columns.index(c), j] = 1.0
+    if variant.shared:
+        j = variant.parameters.index(SHARED_PARAMETER)
+        for c in variant.shared:
+            basis[columns.index(c), j] = 1.0
+    if variant.flat:
+        basis[len(columns), variant.parameters.index(FLAT_PARAMETER)] = 1.0
+    for c in variant.fixed:
+        fixed[columns.index(c)] = 1.0
+    return basis, fixed
+
+
+@dataclass
+class FitSolution:
+    """Solved coefficients of one variant.
+
+    Attributes:
+        variant: The variant.
+        columns: Current columns in order.
+        theta: Coefficients in ``variant.parameters`` order; NaN for a parameter
+            without signal.
+    """
+
+    variant: FitVariant
     columns: tuple[str, ...]
-    with_constant: bool = False
-    ata: np.ndarray = field(init=False)
-    atb: np.ndarray = field(init=False)
-    n_nodes: int = field(init=False, default=0)
-    n_frames: int = field(init=False, default=0)
-    sum_sq_target: float = field(init=False, default=0.0)
+    theta: np.ndarray
 
-    def __post_init__(self) -> None:
-        n = len(self.columns)
-        self.ata = np.zeros((n, n))
-        self.atb = np.zeros(n)
+    @property
+    def base(self) -> np.ndarray:
+        """Base coefficients ``fixed + basis @ theta`` (NaN parameters count as 0)."""
+        basis, fixed = design(self.variant, self.columns)
+        return fixed + basis @ np.nan_to_num(self.theta)
 
-    def add(self, target, coil_maps, mask) -> None:
-        """Adds one frame. ``coil_maps`` is ``(n_columns, nZ, nR)`` unscaled."""
-        m = np.asarray(mask, dtype=bool)
-        if m.sum() < len(self.columns) + 1:
-            return
-        y = np.asarray(target, dtype=np.float64)[m]
-        a = np.asarray(coil_maps, dtype=np.float64)[:, m]
-        if self.with_constant:
-            y = y - y.mean()
-            a = a - a.mean(axis=1, keepdims=True)
-        self.ata += a @ a.T
-        self.atb += a @ y
-        self.n_nodes += int(m.sum())
-        self.n_frames += 1
-        self.sum_sq_target += float(y @ y)
+    @property
+    def scales(self) -> np.ndarray:
+        """Per-column scales, ``(n_columns,)``: fitted, shared, 1 for fixed, 0 for left out;
+        NaN where a free column had no signal."""
+        out = self.base[:len(self.columns)]
+        for j, c in enumerate(self.variant.free):
+            if np.isnan(self.theta[j]):
+                out[self.columns.index(c)] = np.nan
+        return out
 
-    def solve(self) -> np.ndarray:
-        """Scales in ``columns`` order; NaN for columns with no signal. Uses the pseudo-inverse."""
-        if self.n_frames == 0:
-            return np.full(len(self.columns), np.nan)
-        diag = np.diag(self.ata)
-        active = diag > 0
-        scales = np.full(len(self.columns), np.nan)
-        if active.any():
-            sub = self.ata[np.ix_(active, active)]
-            scales[active] = np.linalg.pinv(sub) @ self.atb[active]
-        return scales
+    @property
+    def flat_wb_per_ka(self) -> float:
+        """The flat solenoid coefficient, 0 when the variant has none."""
+        return float(self.base[len(self.columns)]) if self.variant.flat else 0.0
 
-    def constant_for(self, target, coil_maps, mask, scales) -> float:
-        """Per-frame constant implied by the solved scales; 0 without constants."""
-        if not self.with_constant:
-            return 0.0
-        m = np.asarray(mask, dtype=bool)
-        if not m.any():
+    def coefficients(self) -> dict[str, float]:
+        return {name: float(v) for name, v in zip(self.variant.parameters, self.theta)}
+
+    def model(self, coil_maps, sol_ka: float) -> np.ndarray:
+        """The model map from a frame's coil maps and solenoid current, before any constant."""
+        maps = np.asarray(coil_maps, dtype=np.float64)
+        out = np.tensordot(np.nan_to_num(self.scales), maps, axes=1)
+        if self.variant.flat:
+            out = out + self.flat_wb_per_ka * (float(sol_ka) if np.isfinite(sol_ka) else 0.0)
+        return out
+
+    def residual_sums(self, normal: FrameNormal) -> tuple[float, float, int]:
+        """``(sum of squared residuals, sum of residuals, n)`` of a frame under this variant;
+        with a per-frame constant the sums are those of the centred residual."""
+        nm = normal.centred() if self.variant.constant else normal
+        b = self.base
+        ss = nm.sum_sq - 2.0 * b @ nm.moment + b @ nm.gram @ b
+        total = (normal.moment[-1] - b @ normal.gram[:, -1])
+        return float(max(ss, 0.0)), float(total), nm.n
+
+    def frame_rms(self, normal: FrameNormal) -> float:
+        """Root-mean-square residual of a frame over its flux range (K5); NaN without nodes."""
+        ss, _, n = self.residual_sums(normal)
+        if n == 0 or not np.isfinite(normal.flux_range) or normal.flux_range <= 0:
             return np.nan
-        model = np.tensordot(np.nan_to_num(np.asarray(scales, dtype=np.float64)),
-                             np.asarray(coil_maps, dtype=np.float64), axes=1)
-        return float(np.mean(np.asarray(target, dtype=np.float64)[m] - model[m]))
+        return float(np.sqrt(ss / n) / normal.flux_range)
+
+    def frame_mean_residual(self, normal: FrameNormal) -> float:
+        """Mean of ``target - model`` over the frame's nodes, in Wb/rad, before any constant.
+        For a variant with a constant this is the frame's constant."""
+        _, total, n = self.residual_sums(normal)
+        return float(total / n) if n else np.nan
+
+    def to_coil_scales(self, machine: str, source: str = "") -> "CoilScales":
+        """The record ``GreenTable.flux`` applies: per-column scales and the flat term."""
+        from fusion_eq.coil_flux import CoilScales
+        return CoilScales(machine=machine, scales={c: float(np.nan_to_num(s)) for c, s in zip(self.columns, self.scales)},
+                          flat_wb_per_ka=self.flat_wb_per_ka, source=source or self.variant.name)
+
+
+class ScaleFit:
+    """Least squares of one variant, accumulated frame by frame from ``FrameNormal`` sums.
+
+    Minimises ``sum_frames sum_nodes (target - model)^2`` with the model of
+    ``FitVariant``. A frame with fewer nodes than parameters plus one is skipped.
+    """
+
+    def __init__(self, columns, variant: FitVariant) -> None:
+        self.columns = tuple(columns)
+        self.variant = variant
+        self.basis, self.fixed = design(variant, self.columns)
+        p = self.basis.shape[1]
+        self.ata = np.zeros((p, p))
+        self.atb = np.zeros(p)
+        self.n_nodes = 0
+        self.n_frames = 0
+
+    def add(self, normal: FrameNormal) -> None:
+        if normal.n < self.basis.shape[1] + 1:
+            return
+        nm = normal.centred() if self.variant.constant else normal
+        self.ata += self.basis.T @ nm.gram @ self.basis
+        self.atb += self.basis.T @ (nm.moment - nm.gram @ self.fixed)
+        self.n_nodes += normal.n
+        self.n_frames += 1
+
+    def solve(self) -> FitSolution:
+        """Coefficients by the pseudo-inverse; NaN for a parameter with no signal."""
+        p = self.basis.shape[1]
+        theta = np.full(p, np.nan)
+        if self.n_frames > 0:
+            active = np.diag(self.ata) > 0
+            if active.any():
+                theta[active] = np.linalg.pinv(self.ata[np.ix_(active, active)]) @ self.atb[active]
+        return FitSolution(variant=self.variant, columns=self.columns, theta=theta)
+
+
+def fit_variants(normals, columns, variants: dict[str, FitVariant]) -> dict[str, FitSolution]:
+    """Solves every variant over the same frames (an iterable of ``FrameNormal``)."""
+    fits = {name: ScaleFit(columns, v) for name, v in variants.items()}
+    for normal in normals:
+        for fit in fits.values():
+            fit.add(normal)
+    return {name: fit.solve() for name, fit in fits.items()}
+
+
+# ------------------------------------------------------------------ X-point (D9)
+def xpoint_class(contour, oriented_psi, grid_r, grid_z, ratio: float = 2.0) -> str:
+    """Position of the X-point of a frame, as a proxy: ``lower``, ``upper``, ``both`` or ``none``.
+
+    The scorer has no X-point finder. The X-point is a null of the poloidal field, so
+    the proxy takes the boundary point with the smallest ``|grad psi| / R``; the
+    class is ``both`` when the half of the boundary on the other side of Z = 0 holds a
+    minimum within ``ratio`` of the smallest, ``none`` without a boundary.
+    """
+    if contour is None or len(contour) < 3:
+        return "none"
+    c = np.asarray(contour, dtype=np.float64)
+    grid_r = np.asarray(grid_r, dtype=np.float64)
+    grid_z = np.asarray(grid_z, dtype=np.float64)
+    dpsi_dz, dpsi_dr = np.gradient(np.asarray(oriented_psi, dtype=np.float64), grid_z, grid_r)
+    pts = c[:, ::-1]
+    br = RegularGridInterpolator((grid_z, grid_r), dpsi_dz, bounds_error=False, fill_value=np.nan)(pts)
+    bz = RegularGridInterpolator((grid_z, grid_r), dpsi_dr, bounds_error=False, fill_value=np.nan)(pts)
+    bp = np.hypot(br, bz) / c[:, 0]
+    if not np.isfinite(bp).any():
+        return "none"
+    i0 = int(np.nanargmin(bp))
+    z0 = c[i0, 1]
+    other = c[:, 1] * np.sign(z0) < 0
+    if other.any() and np.isfinite(bp[other]).any():
+        second = np.nanmin(bp[other])
+        # A second null within the ratio, or an exact null on both sides.
+        if second < ratio * bp[i0] or second <= 1e-9 * np.nanmax(bp):
+            return "both"
+    return "lower" if z0 < 0 else "upper"
 
 
 # -------------------------------------------------------------------- remainder (K7)
@@ -366,17 +611,20 @@ def mirror_difference(table: GreenTable, currents_ka, cfg: MachineConfig) -> flo
 
 # ------------------------------------------------------------------ MAST checks (K9)
 def reference_ratios(table: GreenTable, currents_ka, ip_ka, cfg: MachineConfig, grid_r, grid_z,
-                     start_frame: int, flat_frame: int) -> dict:
+                     start_frame: int, flat_frame: int, scales=None) -> dict:
     """Label-free coil-flux ratios at the machine's reference point (D5).
 
     Args:
         table: Green's table.
         currents_ka: ``(frames, n_columns)`` currents in kA.
-        ip_ka: ``(frames,)`` plasma current in kA.
+        ip_ka: ``(frames,)`` plasma current in kA, signed: the ratios then carry the
+            same sign on both directions of the discharge.
         cfg: Machine configuration (reference radius).
         grid_r, grid_z: Grid axes.
         start_frame: Frame at the start of the Ip rise.
         flat_frame: Frame on the flat-top.
+        scales: Coil model applied to the flux (``GreenTable.flux``); None for the
+            unscaled patterns.
 
     Returns:
         ``bz_ratio``: vertical coil field at (R0, 0) over ``mu0 Ip / (4 pi R0)`` at the
@@ -390,12 +638,12 @@ def reference_ratios(table: GreenTable, currents_ka, ip_ka, cfg: MachineConfig, 
     iz = int(np.argmin(np.abs(grid_z)))
     c = np.nan_to_num(np.asarray(currents_ka, dtype=np.float64))
     ip_flat_a = float(ip_ka[flat_frame]) * A_PER_KA
-    flux_flat = table.flux(c[flat_frame])
+    flux_flat = table.flux(c[flat_frame], scales)
     bz = gs.vertical_field(flux_flat, grid_r, grid_z)[iz, ir]
     bz_ratio = bz / (MU0 * ip_flat_a / (4.0 * np.pi * r0)) if ip_flat_a != 0 else np.nan
     sol = table.column_index([cfg.solenoid_column])[0]
     sol_only = np.zeros_like(c[flat_frame])
     sol_only[sol] = c[flat_frame, sol] - c[start_frame, sol]
-    delta_sol = table.flux(sol_only)[iz, ir]
+    delta_sol = table.flux(sol_only, scales)[iz, ir]
     sol_ratio = delta_sol / (MU0 * r0 * ip_flat_a) if ip_flat_a != 0 else np.nan
     return {"bz_ratio": float(bz_ratio), "sol_flux_ratio": float(sol_ratio), "ir": ir, "iz": iz}

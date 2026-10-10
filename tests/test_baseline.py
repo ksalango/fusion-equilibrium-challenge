@@ -156,9 +156,62 @@ def test_score_local_perfect_scores_one_and_zeros_zero(data_root, starter):
     flipped_result = bl.score_local(flipped, ids, data_root)
     assert flipped_result.psi_sign == -1.0 and flipped_result.finalize()["S"] == pytest.approx(1.0, abs=1e-6)
     # A frame stride keeps every second frame on both sides; references built once are reused.
-    refs = bl.build_references(ids, data_root, frame_stride=2)
+    refs = bl.build_references(ids, data_root, frame_stride=2, workers=1, cache_dir=None)
     strided = bl.score_local(lambda s: bl.Prediction(truth[s]["psi"][::2], truth[s]["q95"][::2], truth[s]["betaN"][::2]),
                              ids, data_root, frame_stride=2, references=refs)
     assert strided.ref_stats[0]["psi_n"] == 2 * 65 * 65 and strided.finalize()["S"] == pytest.approx(1.0, abs=1e-6)
     with pytest.raises(ValueError):
         bl.score_local(perfect, ids, data_root, references=refs)
+
+
+def _same_parts(a: dict, b: dict) -> bool:
+    if a.keys() != b.keys():
+        return False
+    for key in a:
+        x, y = a[key], b[key]
+        if isinstance(x, dict):
+            if x.keys() != y.keys() or any(x[k] != y[k] for k in x):
+                return False
+        elif isinstance(x, np.ndarray):
+            if not np.array_equal(x, y):
+                return False
+        elif x != y:
+            return False
+    return True
+
+
+def test_parallel_scoring_and_reference_cache_match_the_single_process_path(data_root, starter, tmp_path, monkeypatch):
+    ids = ["a1", "b2"]
+    truth = {s: bl.load_truth(s, data_root) for s in ids}
+    rng = np.random.default_rng(0)
+    rough = {s: bl.Prediction(t["psi"] * 0.9 + rng.normal(scale=0.02, size=t["psi"].shape).astype(np.float32),
+                              t["q95"] + 0.3, t["betaN"] * 1.1) for s, t in truth.items()}
+    cache = tmp_path / "references"
+    serial = bl.build_references(ids, data_root, workers=1, cache_dir=None)
+    parallel = bl.build_references(ids, data_root, workers=2, cache_dir=cache)
+    assert not serial.from_cache and not parallel.from_cache
+    files = list(cache.glob("refs_*.npz"))
+    assert len(files) == 1 and files[0].name == f"refs_{bl.reference_key(ids, 'diii_d_train', 1)}.npz"
+    # Read back from the cache, without building anything.
+    monkeypatch.setattr(bl, "_shot_reference", lambda *a: (_ for _ in ()).throw(AssertionError("built instead of cached")))
+    cached = bl.build_references(ids, data_root, workers=1, cache_dir=cache)
+    assert cached.from_cache
+    for other in (parallel, cached):
+        assert other.shot_ids == serial.shot_ids and other.frame_stride == serial.frame_stride
+        for (c0, cons0, m0, r0), (c1, cons1, m1, r1) in zip(serial.refs, other.refs):
+            assert len(c0) == len(c1) and all((x is None and y is None) or np.array_equal(x, y) for x, y in zip(c0, c1))
+            assert np.array_equal(cons0, cons1, equal_nan=True) and np.array_equal(m0, m1) and r0 == r1
+        for s0, s1 in zip(serial.ref_stats, other.ref_stats):
+            assert all(np.array_equal(np.asarray(s0[k]), np.asarray(s1[k])) for k in s0)
+    monkeypatch.undo()
+    # Another stride or shot order is another key.
+    assert bl.reference_key(ids, "diii_d_train", 2) != bl.reference_key(ids, "diii_d_train", 1)
+    assert bl.reference_key(ids[::-1], "diii_d_train", 1) != bl.reference_key(ids, "diii_d_train", 1)
+    # Scoring: identical parts and totals from one process and from two.
+    one = bl.score_local(rough, ids, data_root, references=serial, workers=1)
+    two = bl.score_local(rough, ids, data_root, references=cached, workers=2)
+    assert one.psi_sign == two.psi_sign and one.shot_ids == two.shot_ids
+    assert all(_same_parts(p, q) for p, q in zip(one.parts, two.parts))
+    assert one.finalize() == two.finalize() and one.finalize([True, False]) == two.finalize([True, False])
+    assert 0.0 < one.finalize()["S"] < 1.0
+    assert bl.default_workers() >= 1

@@ -20,7 +20,10 @@ flux at a grid node inside a coil converges as the subdivision is refined.
 A Green's table holds one 65 by 65 pattern per current column for 1 kA of that
 column's value under the machine's turn convention (``fusion_eq.machines``). The
 coil flux of any frame is then a weighted sum of patterns, which costs one matrix
-product. Patterns are in Wb/rad per kA.
+product. Patterns are in Wb/rad per kA. Fitted multipliers (``CoilScales``) are
+applied at that point, together with a flat solenoid term, a flux that is the same
+at every node and proportional to the solenoid current, which stands in for the
+part of the solenoid's flux that the lumped rectangle does not produce.
 
 Skew convention (EFIT ``AF`` / ``AF2``, confirmed from the starter kit README, the
 EFIT filament routine and the data): ``coil_angle1`` tilts the top and bottom sides
@@ -333,20 +336,29 @@ class GreenTable:
         Args:
             currents_ka: ``(n_columns,)`` or ``(frames, n_columns)`` currents in kA in
                 ``columns`` order. NaN currents are treated as zero.
-            scales: Optional per-column multipliers, ``(n_columns,)``.
+            scales: Optional per-column multipliers, ``(n_columns,)``, or a
+                ``CoilScales`` record, whose flat solenoid term is added to every node.
 
         Returns:
             ``(nZ, nR)`` for one frame or ``(frames, nZ, nR)`` for many.
         """
         c = np.nan_to_num(np.asarray(currents_ka, dtype=np.float64))
-        if scales is not None:
-            c = c * np.asarray(scales, dtype=np.float64)
         single = c.ndim == 1
         c = np.atleast_2d(c)
         if c.shape[1] != len(self.columns):
             raise ValueError(f"expected {len(self.columns)} currents, got {c.shape[1]}")
+        flat_term = 0.0
+        if isinstance(scales, CoilScales):
+            if scales.machine != self.machine:
+                raise ValueError(f"scales are for {scales.machine}, the table for {self.machine}")
+            if scales.flat_wb_per_ka != 0.0:
+                sol = self.column_index([machine_config(self.machine).solenoid_column])[0]
+                flat_term = scales.flat_wb_per_ka * c[:, sol][:, None, None]
+            c = c * scales.vector(self.columns)
+        elif scales is not None:
+            c = c * np.asarray(scales, dtype=np.float64)
         flat = c @ self.patterns.reshape(len(self.columns), -1)
-        out = flat.reshape(c.shape[0], *self.patterns.shape[1:])
+        out = flat.reshape(c.shape[0], *self.patterns.shape[1:]) + flat_term
         return out[0] if single else out
 
     def column_index(self, columns: Iterable[str]) -> np.ndarray:
@@ -403,9 +415,98 @@ def build_green_table(machine: str | MachineConfig, geometry: CoilGeometry, grid
                       elements_per_column=geometry.elements_per_column())
 
 
-def coil_flux(table: GreenTable, currents_ka, scales=None) -> np.ndarray:
-    """Coil flux from a table and currents in kA; see ``GreenTable.flux``."""
+ADOPTED = "adopted"
+RESOURCE_DIR = Path(__file__).resolve().parent / "resources"
+# Adopted coil model per machine: the file is the ``CoilScales`` record chosen at the close
+# of the coil-flux phase (DIII-D: shaping coils as stored plus the flat solenoid term, the
+# ``solenoid_flat`` variant of the fit of 10 October 2026). A machine without a file uses
+# the default record, every scale 1 and no flat term.
+ADOPTED_FILES = {"DIII-D": RESOURCE_DIR / "coil_scales_d3d.json"}
+
+
+def adopted_scales(machine: str, columns: Iterable[str]) -> "CoilScales":
+    """The adopted ``CoilScales`` of a machine, or the default record when none is adopted.
+
+    Raises:
+        KeyError: when the adopted file lacks one of ``columns``.
+    """
+    columns = list(columns)
+    path = ADOPTED_FILES.get(machine)
+    if path is None or not path.is_file():
+        return CoilScales.default(machine, columns)
+    record = CoilScales.load(path)
+    if record.machine != machine:
+        raise ValueError(f"{path} is for {record.machine}, not {machine}")
+    record.vector(columns)                   # every column must have a scale
+    return record
+
+
+def coil_flux(table: GreenTable, currents_ka, scales=ADOPTED) -> np.ndarray:
+    """Coil flux from a table and currents in kA, under the machine's adopted coil model.
+
+    ``scales`` defaults to ``adopted_scales(table.machine, table.columns)``; pass None for
+    the unscaled patterns, an array of per-column multipliers, or a ``CoilScales``
+    record. See ``GreenTable.flux``.
+    """
+    if isinstance(scales, str) and scales == ADOPTED:
+        scales = adopted_scales(table.machine, table.columns)
     return table.flux(currents_ka, scales)
+
+
+# -------------------------------------------------------------------- fitted scales
+@dataclass
+class CoilScales:
+    """Fitted multipliers of a machine's current columns, applied by ``GreenTable.flux``.
+
+    The values are fitted on DIII-D training shots (``fusion_eq.coil_scales``) and
+    saved, so that the same record serves training, validation and test. A machine
+    without a fit uses ``default``: every scale 1 and no flat term, which leaves the
+    calculated flux unchanged; MAST is in that state.
+
+    Attributes:
+        machine: Machine name.
+        scales: Current column to multiplier of its Green's pattern.
+        flat_wb_per_ka: Flat solenoid term in Wb/rad per kA of the solenoid column,
+            added at every node of the grid; 0 when not fitted.
+        source: Free text on where the values come from (fit variant, run).
+    """
+
+    machine: str
+    scales: dict[str, float]
+    flat_wb_per_ka: float = 0.0
+    source: str = ""
+
+    @classmethod
+    def default(cls, machine: str, columns: Iterable[str]) -> "CoilScales":
+        """Every scale 1 and no flat term."""
+        return cls(machine=machine, scales={c: 1.0 for c in columns}, flat_wb_per_ka=0.0, source="default")
+
+    def vector(self, columns: Iterable[str]) -> np.ndarray:
+        """Scales in the given column order.
+
+        Raises:
+            KeyError: for a column without a scale.
+        """
+        missing = [c for c in columns if c not in self.scales]
+        if missing:
+            raise KeyError(f"no scale for {missing} on {self.machine}")
+        return np.array([self.scales[c] for c in columns], dtype=np.float64)
+
+    def to_dict(self) -> dict:
+        return {"machine": self.machine, "scales": dict(self.scales), "flat_wb_per_ka": float(self.flat_wb_per_ka),
+                "source": self.source}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CoilScales":
+        return cls(machine=str(d["machine"]), scales={k: float(v) for k, v in d["scales"].items()},
+                   flat_wb_per_ka=float(d.get("flat_wb_per_ka", 0.0)), source=str(d.get("source", "")))
+
+    def save(self, path: Path | str) -> None:
+        Path(path).write_text(json.dumps(self.to_dict(), indent=1, sort_keys=True) + "\n")
+
+    @classmethod
+    def load(cls, path: Path | str) -> "CoilScales":
+        return cls.from_dict(json.loads(Path(path).read_text()))
 
 
 def direct_coil_flux(machine: str | MachineConfig, geometry: CoilGeometry, currents_ka: dict[str, float],

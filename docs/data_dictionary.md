@@ -300,6 +300,14 @@ elements), MAST solenoid `per_element` (656 single-turn elements each carrying t
 value), DIII-D `magnetics_ECOILA` one element, scale to be fitted. Reference radii for the
 label-free checks, provisional: DIII-D 1.67 m, MAST 0.85 m (published major radii).
 
+Adopted on 10 October 2026 (coil-flux phase, findings F45 to F48): on DIII-D the stored map
+is the physical flux times minus the sign of Ip (`psi_physical = -sign(Ip) x psi_stored`);
+the shaping coils enter the coil flux as stored, in kA-turn at scale 1; the solenoid enters as
+a flat term of 0.00897 Wb/rad per kA of `magnetics_ECOILA`, the same at every node, in place
+of its rectangle pattern. The record is `fusion_eq/resources/coil_scales_d3d.json`
+(`fusion_eq.coil_flux.CoilScales`), applied by `coil_flux` by default. MAST has no fitted
+record: every scale 1 and no flat term.
+
 ## 5. Where the README and the data disagree
 
 Contradictions are recorded with evidence and left unresolved.

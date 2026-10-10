@@ -21,6 +21,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import multiprocessing as mp
+import os
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -445,12 +449,14 @@ class References:
         refs: Per shot, ``(contours, cons, cmask, rgeo)`` from ``local_score.build_reference``.
         ref_stats: Per shot, the reference sums the scorer pools.
         frame_stride: Stride the truth was read with.
+        from_cache: Whether the set was read from the on-disk cache.
     """
 
     shot_ids: list[str]
     refs: list[tuple]
     ref_stats: list[dict]
     frame_stride: int
+    from_cache: bool = False
 
     @property
     def means(self) -> tuple:
@@ -466,77 +472,207 @@ class References:
                 np.where(cons_n > 0, cons_sum / np.where(cons_n > 0, cons_n, 1), 0.0))
 
 
-def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str = dataset.LABELLED_SPLITS[0],
-                     frame_stride: int = 1) -> References:
-    """Builds the scorer's reference (boundary and seven derived scalars per frame, and
-    the pooled sums) from the true maps of the shots, as ``local_score.py`` does."""
+DEFAULT_REFERENCE_DIR = DEFAULT_CACHE_DIR / "references"
+
+
+def default_workers() -> int:
+    """Processes used for scoring when none are given: the CPU count minus two, at least one."""
+    return max(1, (os.cpu_count() or 3) - 2)
+
+
+def _map_ordered(fn, items: Iterable[tuple], workers: int | None, window: int | None = None):
+    """Yields ``fn(*item)`` in order, from a spawned process pool when ``workers`` is above one.
+
+    ``items`` is consumed lazily and at most ``window`` items (twice the workers by
+    default) are in flight, so the arguments of a long sequence are never all held in
+    memory at once. ``fn`` must be a module-level function.
+    """
+    workers = default_workers() if workers is None else int(workers)
+    if workers <= 1:
+        for item in items:
+            yield fn(*item)
+        return
+    window = 2 * workers if window is None else max(1, int(window))
+    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as pool:
+        pending: deque = deque()
+        for item in items:
+            pending.append(pool.submit(fn, *item))
+            if len(pending) >= window:
+                yield pending.popleft().result()
+        while pending:
+            yield pending.popleft().result()
+
+
+def _shot_reference(shot_id: str, data_root: str, split: str, stride: int) -> dict:
+    """One shot's scorer reference as plain arrays: contours padded with NaN to one
+    array, their point counts, the derived scalars, their mask, the geometric major
+    radius and the pooled sums. Runs in a worker process."""
     ls = local_score_module()
     env = starter_kit.envelope_mask(machine_config("DIII-D"))
-    refs, ref_stats = [], []
-    for shot_id in shot_ids:
-        truth = load_truth(shot_id, data_root, split, frame_stride)
-        contours, cons, cmask, rgeo = ls.build_reference(truth["psi"], env.grid_R, env.grid_Z, env.mask_coarse, env.mask_f)
-        g = truth["psi"].astype(np.float64)
-        fin = np.isfinite(g)
-        stats = {"psi_sum": float(g[fin].sum()), "psi_sumsq": float((g[fin] ** 2).sum()), "psi_n": int(fin.sum()),
-                 "scal_sum": np.zeros(ls.N_SCALARS), "scal_sumsq": np.zeros(ls.N_SCALARS), "scal_n": np.zeros(ls.N_SCALARS),
-                 "cons_sum": np.zeros(ls.N_CONS), "cons_sumsq": np.zeros(ls.N_CONS), "cons_n": np.zeros(ls.N_CONS)}
-        for j, name in enumerate(ls.SCALARS):
-            v = truth[name][np.isfinite(truth[name])]
-            stats["scal_sum"][j], stats["scal_sumsq"][j], stats["scal_n"][j] = v.sum(), (v ** 2).sum(), v.size
-        for j in range(ls.N_CONS):
-            v = cons[cmask[:, j], j]
-            stats["cons_sum"][j], stats["cons_sumsq"][j], stats["cons_n"][j] = v.sum(), (v ** 2).sum(), v.size
-        refs.append((contours, cons, cmask, rgeo))
-        ref_stats.append(stats)
-    return References(shot_ids=list(shot_ids), refs=refs, ref_stats=ref_stats, frame_stride=frame_stride)
+    truth = load_truth(shot_id, data_root, split, stride)
+    contours, cons, cmask, rgeo = ls.build_reference(truth["psi"], env.grid_R, env.grid_Z, env.mask_coarse, env.mask_f)
+    n_points = np.array([0 if c is None else len(c) for c in contours], dtype=np.int64)
+    packed = np.full((len(contours), int(n_points.max()) if len(contours) else 0, 2), np.nan)
+    for k, c in enumerate(contours):
+        if c is not None:
+            packed[k, :len(c)] = np.asarray(c, dtype=np.float64)
+    g = truth["psi"].astype(np.float64)
+    fin = np.isfinite(g)
+    stats = {"psi_sum": float(g[fin].sum()), "psi_sumsq": float((g[fin] ** 2).sum()), "psi_n": int(fin.sum()),
+             "scal_sum": np.zeros(ls.N_SCALARS), "scal_sumsq": np.zeros(ls.N_SCALARS), "scal_n": np.zeros(ls.N_SCALARS),
+             "cons_sum": np.zeros(ls.N_CONS), "cons_sumsq": np.zeros(ls.N_CONS), "cons_n": np.zeros(ls.N_CONS)}
+    for j, name in enumerate(ls.SCALARS):
+        v = truth[name][np.isfinite(truth[name])]
+        stats["scal_sum"][j], stats["scal_sumsq"][j], stats["scal_n"][j] = v.sum(), (v ** 2).sum(), v.size
+    for j in range(ls.N_CONS):
+        v = cons[cmask[:, j], j]
+        stats["cons_sum"][j], stats["cons_sumsq"][j], stats["cons_n"][j] = v.sum(), (v ** 2).sum(), v.size
+    return {"contours": packed, "n_points": n_points, "cons": np.asarray(cons, dtype=np.float64),
+            "cmask": np.asarray(cmask, dtype=bool), "rgeo": float(rgeo), "stats": stats}
+
+
+def _unpack_reference(record: dict) -> tuple:
+    """``(contours, cons, cmask, rgeo)`` as ``local_score.score_shot`` expects them."""
+    contours = [record["contours"][k, :n] if n > 0 else None for k, n in enumerate(record["n_points"])]
+    return contours, record["cons"], record["cmask"], record["rgeo"]
+
+
+STATS_KEYS = ("psi_sum", "psi_sumsq", "psi_n", "scal_sum", "scal_sumsq", "scal_n", "cons_sum", "cons_sumsq", "cons_n")
+
+
+def reference_key(shot_ids: Sequence[str], split: str, frame_stride: int) -> str:
+    """Cache key of a reference set: the shot list in order, the split, the stride and the
+    scorer version."""
+    ls = local_score_module()
+    text = json.dumps({"shots": list(shot_ids), "split": split, "stride": int(frame_stride),
+                       "scoring_version": ls.SCORING_VERSION}, sort_keys=True)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def save_references(path: Path | str, shot_ids: Sequence[str], split: str, frame_stride: int, records: list[dict]) -> None:
+    """Writes a reference set as one npz (no pickling), atomically."""
+    arrays = {"meta": np.array(json.dumps({"shots": list(shot_ids), "split": split, "stride": int(frame_stride),
+                                            "scoring_version": local_score_module().SCORING_VERSION}))}
+    for i, r in enumerate(records):
+        for key in ("contours", "n_points", "cons", "cmask"):
+            arrays[f"s{i}_{key}"] = r[key]
+        arrays[f"s{i}_rgeo"] = np.array(r["rgeo"])
+        for key in STATS_KEYS:
+            arrays[f"s{i}_{key}"] = np.asarray(r["stats"][key])
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp.npz")
+    np.savez(tmp, **arrays)
+    tmp.replace(path)
+
+
+def load_references(path: Path | str) -> tuple[dict, list[dict]]:
+    """Reads a reference set written by ``save_references``: ``(meta, records)``."""
+    with np.load(path, allow_pickle=False) as f:
+        meta = json.loads(str(f["meta"]))
+        records = []
+        for i in range(len(meta["shots"])):
+            stats = {key: f[f"s{i}_{key}"] for key in STATS_KEYS}
+            for key in ("psi_sum", "psi_sumsq"):
+                stats[key] = float(stats[key])
+            stats["psi_n"] = int(stats["psi_n"])
+            records.append({"contours": f[f"s{i}_contours"], "n_points": f[f"s{i}_n_points"], "cons": f[f"s{i}_cons"],
+                            "cmask": f[f"s{i}_cmask"], "rgeo": float(f[f"s{i}_rgeo"]), "stats": stats})
+    return meta, records
+
+
+def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str = dataset.LABELLED_SPLITS[0],
+                     frame_stride: int = 1, workers: int | None = None,
+                     cache_dir: Path | str | None = DEFAULT_REFERENCE_DIR) -> References:
+    """Builds the scorer's reference (boundary and seven derived scalars per frame, and
+    the pooled sums) from the true maps of the shots, as ``local_score.py`` does.
+
+    Args:
+        shot_ids: Shots in order.
+        data_root: Raw data root.
+        split: Labelled split of the shots.
+        frame_stride: Keep every ``frame_stride``-th frame of each shot.
+        workers: Processes building shots in parallel; the CPU count minus two when
+            None, one for the single-process path. The result does not depend on it.
+        cache_dir: Folder of the on-disk cache, keyed by the shot list, the split, the
+            stride and the scorer version; None disables the cache.
+    """
+    shot_ids = list(shot_ids)
+    path = None if cache_dir is None else Path(cache_dir) / f"refs_{reference_key(shot_ids, split, frame_stride)}.npz"
+    from_cache = False
+    if path is not None and path.is_file():
+        meta, records = load_references(path)
+        if meta["shots"] != shot_ids or meta["stride"] != int(frame_stride) or meta["split"] != split:
+            raise ValueError(f"{path} holds another reference set")
+        from_cache = True
+    else:
+        items = [(s, str(data_root), split, int(frame_stride)) for s in shot_ids]
+        records = list(_map_ordered(_shot_reference, items, workers))
+        if path is not None:
+            save_references(path, shot_ids, split, frame_stride, records)
+    return References(shot_ids=shot_ids, refs=[_unpack_reference(r) for r in records],
+                      ref_stats=[r["stats"] for r in records], frame_stride=int(frame_stride), from_cache=from_cache)
+
+
+def _score_one_shot(shot_id: str, data_root: str, split: str, stride: int, ref: tuple, psirz: np.ndarray,
+                    q95: np.ndarray, beta_n: np.ndarray, psi_sign: float, means: tuple) -> dict:
+    """``local_score.score_shot`` of one shot; runs in a worker process."""
+    ls = local_score_module()
+    env = starter_kit.envelope_mask(machine_config("DIII-D"))
+    truth = load_truth(shot_id, data_root, split, stride)
+    pred = Prediction(psirz, q95, beta_n).as_scorer_dict()
+    return ls.score_shot(truth, ref, pred, env.grid_R, env.grid_Z, env.mask_coarse, env.mask_f, psi_sign, means)
 
 
 def score_local(predict_shot: Callable[[str], Prediction] | Mapping[str, Prediction], shot_ids: Sequence[str],
                 data_root: Path | str, split: str = dataset.LABELLED_SPLITS[0], frame_stride: int = 1,
-                references: References | None = None) -> LocalScore:
+                references: References | None = None, workers: int | None = None) -> LocalScore:
     """Scores predictions on labelled shots with the organizers' local scorer.
 
     The scorer's reference is built from the true maps (or taken from ``references``),
     the global flux sign is decided once over all shots from the flux residuals, and
-    every shot is then scored under it, exactly as ``local_score.py`` does. True maps
-    are loaded per pass rather than kept in memory.
+    every shot is then scored under it, exactly as ``local_score.py`` does. Shots are
+    scored in ``workers`` processes (the CPU count minus two when None); the result is
+    the same as with one process, since each shot's part depends only on that shot,
+    the global sign and the pooled means, and the parts are combined in shot order.
 
     Args:
         predict_shot: Shot id to ``Prediction`` for that shot's (strided) frames, or a
-            mapping with the same content.
+            mapping with the same content. Called twice per shot; predictions are not
+            kept in memory between the passes.
         shot_ids: Shots to score.
         data_root: Raw data root.
         split: Labelled split of the shots.
         frame_stride: Keep every ``frame_stride``-th frame of each shot, in the truth
             and in the prediction alike.
         references: References built earlier for exactly these shots and stride.
+        workers: Scoring processes.
     """
     ls = local_score_module()
-    env = starter_kit.envelope_mask(machine_config("DIII-D"))
+    shot_ids = list(shot_ids)
     get = predict_shot.__getitem__ if isinstance(predict_shot, Mapping) else predict_shot
     if references is None:
-        references = build_references(shot_ids, data_root, split, frame_stride)
-    if references.shot_ids != list(shot_ids) or references.frame_stride != frame_stride:
+        references = build_references(shot_ids, data_root, split, frame_stride, workers=workers)
+    if references.shot_ids != shot_ids or references.frame_stride != frame_stride:
         raise ValueError("references were built for other shots or another frame stride")
     means = references.means
     # The global flux sign, from the flux residuals of every shot (the scorer's probe pass).
-    predictions: dict[str, Prediction] = {}
     residual_totals = {s: 0.0 for s in ls.PSI_SIGNS}
     for shot_id in shot_ids:
         truth = load_truth(shot_id, data_root, split, frame_stride)
-        pred = get(shot_id)
-        predictions[shot_id] = pred
-        rr, _, _ = ls.psi_residuals(truth["psi"], pred.psirz.astype(np.float64), means[0])
+        rr, _, _ = ls.psi_residuals(truth["psi"], get(shot_id).psirz.astype(np.float64), means[0])
         for s in ls.PSI_SIGNS:
             residual_totals[s] += rr[s]
     psi_sign = min(ls.PSI_SIGNS, key=lambda s: residual_totals[s])
-    parts = []
-    for shot_id, ref in zip(shot_ids, references.refs):
-        truth = load_truth(shot_id, data_root, split, frame_stride)
-        parts.append(ls.score_shot(truth, ref, predictions[shot_id].as_scorer_dict(), env.grid_R, env.grid_Z,
-                                   env.mask_coarse, env.mask_f, psi_sign, means))
-    return LocalScore(shot_ids=list(shot_ids), parts=parts, ref_stats=list(references.ref_stats), psi_sign=psi_sign,
+
+    def items():
+        for shot_id, ref in zip(shot_ids, references.refs):
+            pred = get(shot_id)
+            yield (shot_id, str(data_root), split, int(frame_stride), ref, np.asarray(pred.psirz),
+                   np.asarray(pred.q95), np.asarray(pred.betaN), psi_sign, means)
+
+    parts = list(_map_ordered(_score_one_shot, items(), workers))
+    return LocalScore(shot_ids=shot_ids, parts=parts, ref_stats=list(references.ref_stats), psi_sign=psi_sign,
                       frame_stride=frame_stride)
 
 

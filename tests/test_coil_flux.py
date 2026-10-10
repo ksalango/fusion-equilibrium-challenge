@@ -220,3 +220,54 @@ def test_currents_at_frames_matches_frame_table_mean(tmp_path, starter):
     assert np.allclose(currents[:, 0], frames["ip__mean"].to_numpy(dtype=np.float64), rtol=1e-6)
     assert np.allclose(currents[:, 1], frames["sol__mean"].to_numpy(dtype=np.float64), rtol=1e-6)
     assert np.isnan(currents[:, 2]).all()
+
+
+# ------------------------------------------------------------------------ fitted scales
+def scales_geometry():
+    return cf.CoilGeometry(np.array(["F1A", "F1B", "E"]), np.array(["magnetics_F1A", "magnetics_F1B", "magnetics_ECOILA"]),
+                           np.array([1.0, 1.0, 0.72]), np.array([1.2, -1.2, 0.0]), np.array([0.14, 0.14, 0.13]),
+                           np.array([0.12, 0.12, 3.5]), np.zeros(3), np.zeros(3))
+
+
+def test_coil_scales_apply_per_column_and_flat_term(tmp_path):
+    table = cf.build_green_table(DIII_D, scales_geometry(), GRID_R, GRID_Z, n_filaments=2)
+    currents = np.array([[100.0, -60.0, 30.0], [50.0, 50.0, -20.0]])
+    default = cf.CoilScales.default("DIII-D", table.columns)
+    assert default.flat_wb_per_ka == 0.0 and np.allclose(table.flux(currents, default), table.flux(currents))
+    record = cf.CoilScales("DIII-D", {"magnetics_F1A": 0.5, "magnetics_F1B": 2.0, "magnetics_ECOILA": 150.0},
+                           flat_wb_per_ka=0.01, source="test")
+    expected = table.flux(currents, np.array([0.5, 2.0, 150.0])) + 0.01 * currents[:, 2][:, None, None]
+    assert np.allclose(table.flux(currents, record), expected)
+    assert np.allclose(table.flux(currents[0], record), expected[0]) and np.allclose(cf.coil_flux(table, currents, record), expected)
+    # The flat term is the same at every node and proportional to the solenoid current.
+    delta = table.flux(currents, record) - table.flux(currents, record.vector(table.columns))
+    assert np.allclose(delta[0], 0.01 * 30.0) and np.allclose(delta[1], 0.01 * -20.0)
+    record.save(tmp_path / "scales.json")
+    back = cf.CoilScales.load(tmp_path / "scales.json")
+    assert back == record and back.vector(table.columns).tolist() == [0.5, 2.0, 150.0]
+    with pytest.raises(KeyError):
+        back.vector(["magnetics_F2A"])
+    with pytest.raises(ValueError):
+        table.flux(currents, cf.CoilScales.default("MAST", table.columns))
+    # A record without the flat field reads as zero, which leaves MAST unaffected.
+    old = cf.CoilScales.from_dict({"machine": "MAST", "scales": {"magnetics_sol_current": 1.0}})
+    assert old.flat_wb_per_ka == 0.0 and old.source == ""
+
+
+def test_adopted_scales_are_the_default_of_coil_flux():
+    table = cf.build_green_table(DIII_D, scales_geometry(), GRID_R, GRID_Z, n_filaments=2)
+    adopted = cf.adopted_scales("DIII-D", table.columns)
+    # The adopted DIII-D model: shaping coils as stored, the solenoid pattern left out, a flat term.
+    assert adopted.machine == "DIII-D" and adopted.flat_wb_per_ka > 0.0 and "solenoid_flat" in adopted.source
+    assert adopted.scales["magnetics_F1A"] == 1.0 and adopted.scales["magnetics_ECOILA"] == 0.0
+    assert len(adopted.scales) == 19
+    currents = np.array([[100.0, -60.0, 30.0], [50.0, 50.0, -20.0]])
+    assert np.allclose(cf.coil_flux(table, currents), table.flux(currents, adopted))
+    assert np.allclose(cf.coil_flux(table, currents, None), table.flux(currents))
+    assert not np.allclose(cf.coil_flux(table, currents), table.flux(currents))
+    with pytest.raises(KeyError):
+        cf.adopted_scales("DIII-D", ["magnetics_F1A", "unknown"])
+    # MAST has no adopted file: the default record, which leaves the flux unchanged.
+    mast_columns = ["magnetics_p2l_current", "magnetics_sol_current"]
+    mast = cf.adopted_scales("MAST", mast_columns)
+    assert mast == cf.CoilScales.default("MAST", mast_columns) and mast.flat_wb_per_ka == 0.0

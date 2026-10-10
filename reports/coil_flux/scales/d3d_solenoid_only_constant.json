@@ -1,0 +1,26 @@
+{
+ "flat_wb_per_ka": 0.0,
+ "machine": "DIII-D",
+ "scales": {
+  "magnetics_ECOILA": -9.223553646266295,
+  "magnetics_F1A": 1.0,
+  "magnetics_F1B": 1.0,
+  "magnetics_F2A": 1.0,
+  "magnetics_F2B": 1.0,
+  "magnetics_F3A": 1.0,
+  "magnetics_F3B": 1.0,
+  "magnetics_F4A": 1.0,
+  "magnetics_F4B": 1.0,
+  "magnetics_F5A": 1.0,
+  "magnetics_F5B": 1.0,
+  "magnetics_F6A": 1.0,
+  "magnetics_F6B": 1.0,
+  "magnetics_F7A": 1.0,
+  "magnetics_F7B": 1.0,
+  "magnetics_F8A": 1.0,
+  "magnetics_F8B": 1.0,
+  "magnetics_F9A": 1.0,
+  "magnetics_F9B": 1.0
+ },
+ "source": "solenoid_only_constant, fit of 2026-10-10T22:40:21+00:00"
+}

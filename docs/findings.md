@@ -4,13 +4,16 @@ Findings from the data quality phase of the Fusion Equilibrium Challenge project
 evidence for each and its consequence for data preparation and modelling. Later phases add
 their findings to this file.
 
-- Period covered: 4 to 6 October 2026.
+- Period covered: 4 to 10 October 2026.
 - Evidence: `reports/qa/qa_report.md` (full run over 9,124 shots, with the Ip alignment
   enabled), `reports/qa_before_ipfix/qa_report.md` (the same run before the alignment),
   `notebooks/01_qa.ipynb`; from 6 October, `reports/frame_table/frame_table_report.md`,
   `reports/frame_table/column_profile.parquet` (full build, commit 12da376) and
-  `notebooks/02_frame_table.ipynb`.
-- Check ids in brackets refer to `docs/QA.md` (0.x) and `docs/FRAME_TABLE.md` (Tx).
+  `notebooks/02_frame_table.ipynb`; from 10 October, `reports/coil_flux/coil_flux_report.md`
+  with its parquet tables (fit of 10 October 2026, 50 fit shots and 8 reference shots) and
+  `notebooks/03_coil_flux.ipynb`.
+- Check ids in brackets refer to `docs/QA.md` (0.x), `docs/FRAME_TABLE.md` (Tx) and
+  `docs/COIL_FLUX.md` (Kx).
 
 ## Summary
 
@@ -27,6 +30,11 @@ the 10 ms rate-of-change window is too short, that MAST inputs lie inside the DI
 and that simple physical combinations of the inputs already carry much of the signal in the
 scalar labels (F26 to F44).
 
+The coil-flux phase (F45 to F53) established that the flux of the coils can be calculated
+from geometry and currents to about one percent of a frame's flux range outside the plasma,
+once the solenoid is represented by a flat term fitted on DIII-D, fixed the sign rule that
+relates the stored map to the physical flux, and found the physics-first structure viable.
+
 ## Completeness and structure
 
 | Id | Finding | Evidence | Consequence |
@@ -37,7 +45,7 @@ scalar labels (F26 to F44).
 | F04 | The flux map is stored as [frame, Z index, R index] on one fixed grid per machine. | Shape (T, 65, 65) on all 7,044 labelled shots. DIII-D grid: R 0.84 to 2.54 m, Z -1.6 to 1.6 m. MAST grid: R 0.06 to 2.0 m, Z -2.0 to 2.0 m. The stored axis lies within half a grid cell of the flux extremum on a typical shot. [0.5, 0.10] | One grid per machine. |
 | F05 | On 40 shots the lowest flux value on the map is not at the plasma centre, and on 23 of them it lies at the grid edge next to a coil. | The scorer's interior axis estimate (`find_o_point`) is within one grid cell of the stored axis on every shot. Flux maps plotted for two of the shots; the stored axis sits at the centre of the plasma in both. [0.5] | The magnetic axis must be located as the interior extremum. Coil flux is large across the whole map, so it affects the pixel score well outside the plasma. |
 | F06 | Coil geometry is identical in every shot of a machine and includes the solenoid. | DIII-D: 19 elements, one per current column, including `magnetics_ECOILA`. MAST: 812 elements (156 for the ten P-coils, 656 for the solenoid). The toroidal field coils and `efps` have no geometry. [0.9] | The Green's function table is computed once per machine. Solenoid flux can be calculated on both machines. |
-| F07 | Current magnitudes are consistent with kA and kA-turns. | Median 99th percentile of the plasma current: 1,060 on DIII-D, 751 on MAST. Largest F-coil value about 570. [0.4] | The scale is confirmed by the coil-flux test in the analysis phase. |
+| F07 | Current magnitudes are consistent with kA and kA-turns. | Median 99th percentile of the plasma current: 1,060 on DIII-D, 751 on MAST. Largest F-coil value about 570. [0.4] | Confirmed by the coil-flux fit for the DIII-D shaping coils (F47) and the plasma current (F46). |
 
 ## Population: test against training
 
@@ -140,7 +148,7 @@ inputs.
 | Id | Finding | Evidence | Consequence |
 | --- | --- | --- | --- |
 | F41 | Simple physical combinations carry much of the signal. | Over 64,616 frames from 300 shots with `ip_over_peak` above 0.5: flux range against absolute Ip, r = 0.900; q95 against absolute tf over absolute Ip, r = 0.867; betaN against core `pe_mean`, r = 0.747 (63,870 frames with a valid profile). The flux range shows vertical streaks at fixed Ip. [notebook section 6] | Supports physics combinations for the scalars. The streaks are flux changing at constant plasma current, which the coil-flux subtraction is expected to remove. |
-| F42 | Coil currents are strongly correlated with each other and with Ip. | Over 1,504,702 frames: F1A with F1B 0.961, F6A with F6B 0.935, Ip with F6A 0.941 and with F6B 0.926 in magnitude. The toroidal field current is uncorrelated with the rest. Every coil's 1st to 99th percentile range crosses zero. | Linear models need regularization. Dividing coil currents by Ip removes the dominant shared factor. Coil currents reversing together with Ip is consistent with a sign rule tied to the Ip direction, to be confirmed by the coil-flux phase. |
+| F42 | Coil currents are strongly correlated with each other and with Ip. | Over 1,504,702 frames: F1A with F1B 0.961, F6A with F6B 0.935, Ip with F6A 0.941 and with F6B 0.926 in magnitude. The toroidal field current is uncorrelated with the rest. Every coil's 1st to 99th percentile range crosses zero. | Linear models need regularization. Dividing coil currents by Ip removes the dominant shared factor. Coil currents reversing together with Ip is consistent with a sign rule tied to the Ip direction, confirmed by the coil-flux phase (F45). |
 
 ## Labels and frame filters
 
@@ -148,6 +156,33 @@ inputs.
 | --- | --- | --- | --- |
 | F43 | Label extremes lie outside the 1st to 99th percentile band. | q95 2.91 to 11.76 (extremes 0.17 and 23.9); betaN 0.08 to 3.31 (-14.5 and 16.7); li 0.64 to 1.73 (0 and 20.8). | Fewer than 1% of frames on each tail. Feeds the label-quality step. |
 | F44 | Some training frames have almost no plasma current. | `ip_over_peak` minimum 0.000 on training (1st percentile 0.363); minimum 0.113 on DIII-D test and 0.121 on MAST. | A minimum-Ip rule is needed for training frames, since the plasma flux is divided by Ip. The affected frames are end-of-shot ramp-downs: 13 below 0.1 and 1,303 below 0.2 (open item 9, resolved). |
+
+## Coil flux (phase C, DIII-D training shots)
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F45 | The stored flux map is the physical flux times minus the sign of Ip. | The current density integrated inside the scorer's boundary has the sign of Ip after that orientation on 8 of 8 reference shots (5 positive, 3 negative Ip), 24 of 24 frames of the single-frame tests and every one of the 1,438 reference frames. The scorer's `AXIS_SIGN` matches positive-Ip shots only. [K4] | Inputs and targets are put in one frame (the physical one) before any model sees them. A sign-handling step precedes every model. |
+| F46 | The current carried by the stored map matches the measured Ip. | Median ratio of the integrated current density to the resampled Ip 0.997 (5th to 95th percentile 0.990 to 1.008); 0.996 on the 2 kHz shots, 0.998 at 20 kHz. [K3] | The Ip units (kA) and the Ip time alignment of the loader are confirmed at the frame level. |
+| F47 | The DIII-D shaping coils are correct as stored, in kA-turn at scale 1. | With a per-frame constant every per-coil scale lies within 0.924 to 1.095. Without the constant the per-coil scales are not identifiable: F1A 0.41 trades against the solenoid (cosine 0.68 between the centred flux patterns) and the per-shot IQR reaches 3.4 (F3A). [K6] | Shaping coils enter the coil flux at scale 1. Per-coil fitted scales are not used. |
+| F48 | The solenoid's flux is flat across the grid, 0.00897 Wb/rad per kA of `magnetics_ECOILA`. | A single scaled rectangle overstates its shape: K5 flat-top 0.037 with the rectangle at scale 147 against 0.0089 with the flat term. Adding the rectangle pattern to the flat term changes nothing (0.0088; pattern coefficient -9.3). [K5, K6] | Adopted DIII-D coil model `solenoid_flat`: shaping coils as stored plus the flat term, saved as `fusion_eq/resources/coil_scales_d3d.json` and applied by `coil_flux` by default. MAST keeps every scale at 1 and no flat term. |
+| F49 | With the adopted model the calculated coil flux agrees with the flux outside the plasma to about one percent of the frame's range. | Median rms over the flux range on the nodes away from the coils, fit frames: flat-top 0.0089, late 0.0090, rising 0.0226; near the coils 0.0096. Reference frames 0.0121, 0.0104, 0.0222. Ceiling with a free constant per frame: 0.0063 (per-coil scales) to 0.0066 (solenoid only). The check on validation shots that took no part in the fit is in the report. [K5] | The physics-first structure is viable: the model learns the plasma's own flux. |
+| F50 | The earliest rising frames with a large solenoid current keep a leftover of 5 to 7 percent. | Rising frames with a solenoid current above 30 kA: 0.051 on the reference frames (44 frames), 0.074 on fit frames in the 30 to 60 kA band; slope of remainder against model near 0.83. [K5] | Candidate cause: vessel currents induced by the solenoid swing. Candidate for rate-of-change features (open item 10). |
+| F51 | The A and B coils of DIII-D are not exact mirrors in the shipped geometry. | F1 to F4: Z_A + Z_B = -5.4 mm; F9: +9.4 mm; F7: R_A - R_B = -10.1 mm; F6 exact; grid and solenoid symmetric about Z = 0. Swapping A and B currents and flipping in Z changes the coil flux by 1.79 percent of its range (up to 3.0 percent for F1 alone). [K8] | Mirroring is exact only when the coil flux is recalculated from the swapped currents; a flipped coil flux is not. |
+| F52 | About 1 percent of DIII-D frames are double-null; two thirds are lower single-null. | Proxy (the boundary point with the smallest poloidal field) on the 50 random fit shots, 996 frames: lower 68.5 percent, upper 29.7 percent, both 1.8 percent. The 8 reference shots (upper 70.6 percent) are not representative. The scorer has no X-point finder. [D9] | Mirroring adds a comparable number of upper-null examples. The proxy is replaced by a boundary-based count when one is needed. |
+| F53 | The MAST label-free checks give the same sign and order as DIII-D. | Each machine under its coil model, Ip signed: Bz ratio at the reference point, medians -1.35 (MAST) against -2.09 (DIII-D); solenoid flux ratio -0.091 (MAST) against the DIII-D value of the report. One DIII-D Bz ratio near +1.7 in the first run was shot `1ca444c006`, a negative-Ip shot normalized by the magnitude of Ip. [K9] | MAST turn conventions are free of gross errors (factor 4 to 23 on a P-coil, 656 on the solenoid) and no more. The checks at the first MAST prediction are listed under "Carried into modelling". |
+
+### Carried into modelling
+
+- DIII-D coil model: shaping coils as stored plus the flat solenoid term (F47, F48).
+- Sign handling: the stored map is `-sign(Ip)` times the physical flux; inputs and targets
+  are put in one frame before any model sees them (F45).
+- Up-down mirroring with recalculated coil flux, to give the model symmetric behaviour;
+  DIII-D has about 1 percent double-null frames (F51, F52).
+- Earliest rising frames: 5 to 6 percent leftover, a candidate for rate-of-change features
+  (F50).
+- To check at the first MAST prediction: how flat MAST's calculated solenoid flux is across
+  the plasma region; the stored-flux sign on MAST; a first MAST score with the coil flux
+  alone (F53).
 
 ## Use of MAST labels
 
@@ -200,3 +235,6 @@ phase of this project uses it for those purposes.
    tenth, 63 elsewhere and 11 in the first tenth; at most 45 frames in one shot. They are
    end-of-shot frames where the plasma current is ramping down. A minimum-Ip rule for
    training frames (F44) removes under 0.1% of frames. [notebook 02 section 8]
+10. The leftover of 5 to 7 percent on the earliest rising frames with a large solenoid current
+    (F50): whether it is induced vessel current, and whether rate-of-change inputs or an
+    explicit vessel model remove it.

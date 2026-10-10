@@ -1,0 +1,189 @@
+{
+  "timestamp": "2026-10-10T22:40:21+00:00",
+  "repo_commit": "579fec91dcd22f1b40e29399844b87884ee752e9",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "",
+  "arguments": {
+    "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
+    "green_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/green",
+    "shot_index": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table/shot_index.parquet",
+    "out": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/coil_flux",
+    "n_shots": 50,
+    "split": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/split/split_provisional.json",
+    "n_validation_shots": 50,
+    "n_mast_shots": 20,
+    "frames_per_shot": 20,
+    "seed": 0,
+    "window_ms": 2.0
+  },
+  "runtime_s": 208.18758082389832,
+  "python": "3.13.15",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "sign_rule": {
+    "c": -1,
+    "consistent": true,
+    "n_shots": 8,
+    "n_positive_ip": 5,
+    "n_negative_ip": 3,
+    "ratio_sign_by_direction": {
+      "1": [
+        -1
+      ],
+      "-1": [
+        1
+      ]
+    }
+  },
+  "k8_mirror": 0.01792564471173741,
+  "reference_shots": {
+    "positive_20khz": [
+      "0011c2afc9",
+      "001270afa9",
+      "001cbcc9e6"
+    ],
+    "negative_ip": [
+      "00000a10ac",
+      "001bc5a4ae",
+      "003ac617f1"
+    ],
+    "rate_2khz": [
+      "00000c4a7b",
+      "0003ff34e7"
+    ]
+  },
+  "n_fit_shots": 50,
+  "geometry_hash": "2715c0981f0daa644f4472e39a61683f1f1aeb39648a875f96726f14e2adb9f7",
+  "variants": [
+    "per_coil",
+    "per_coil_constant",
+    "solenoid_only",
+    "solenoid_only_constant",
+    "shared_plus_solenoid",
+    "shared_plus_solenoid_constant",
+    "solenoid_flat",
+    "solenoid_flat_plus_pattern"
+  ],
+  "headline_variant": "solenoid_flat",
+  "spread_variant": "per_coil",
+  "validation_shots": [
+    "0744a90d8c",
+    "0956d6c50c",
+    "0ba7b1288d",
+    "13ef4f31d5",
+    "1cf2a6d87d",
+    "1ec9bfdc1b",
+    "2ac873e13b",
+    "316f541fd6",
+    "32db2201a3",
+    "3441237513",
+    "35ea2127fe",
+    "3631a8530e",
+    "368efe6be4",
+    "3f79492349",
+    "44d65498a4",
+    "466208d7cf",
+    "4c585eb198",
+    "5161563a0c",
+    "5cccde4618",
+    "62b9229418",
+    "64804d3245",
+    "6e21dadc54",
+    "6e3d26f7d6",
+    "6ea0d896ef",
+    "706c6ead5f",
+    "7435723ce1",
+    "77d0c43681",
+    "8038593531",
+    "8248019dd3",
+    "86b1a8f12c",
+    "8d8af32da3",
+    "991e9c4216",
+    "9b67ddea51",
+    "9ba43e6ea9",
+    "9c5a02ae1b",
+    "9eb86d3885",
+    "a2ae4f3c2b",
+    "a76d021bcc",
+    "ad5ad28f46",
+    "b3d18042c2",
+    "b3f71c6d73",
+    "baa80ca344",
+    "c5950f937b",
+    "c7b865ec80",
+    "c93a2fc2f2",
+    "d64eac1617",
+    "db2809aff1",
+    "f227540931",
+    "f39173e27c",
+    "fea57d4168"
+  ],
+  "split_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/split/split_provisional.json",
+  "adopted_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/src/fusion_eq/resources/coil_scales_d3d.json",
+  "adopted_file_matches": true,
+  "coefficients": {
+    "per_coil": {
+      "magnetics_F1A": 0.41199504537001985,
+      "magnetics_F2A": 0.5648020624974777,
+      "magnetics_F3A": 0.7593148500517515,
+      "magnetics_F4A": 1.1470591241725856,
+      "magnetics_F5A": 0.688838759358049,
+      "magnetics_F6A": 1.061265066862596,
+      "magnetics_F7A": 1.0715610181484934,
+      "magnetics_F8A": 1.027020531387187,
+      "magnetics_F9A": 1.0116309613715337,
+      "magnetics_F1B": 0.6803667538764557,
+      "magnetics_F2B": 0.43998968305425024,
+      "magnetics_F3B": 0.7483051549662427,
+      "magnetics_F4B": 0.9666753592121466,
+      "magnetics_F5B": 0.9244755430992662,
+      "magnetics_F6B": 1.0354386922640302,
+      "magnetics_F7B": 1.0670264558521065,
+      "magnetics_F8B": 0.9094082189100021,
+      "magnetics_F9B": 0.9742275106448375,
+      "magnetics_ECOILA": 149.05833053694658
+    },
+    "per_coil_constant": {
+      "magnetics_F1A": 1.052455206547249,
+      "magnetics_F2A": 1.0951503906494282,
+      "magnetics_F3A": 1.0063216358479519,
+      "magnetics_F4A": 0.9278562130491288,
+      "magnetics_F5A": 0.9815455448794408,
+      "magnetics_F6A": 1.029169541355297,
+      "magnetics_F7A": 0.9780942033116777,
+      "magnetics_F8A": 0.941901919349641,
+      "magnetics_F9A": 0.9806458558100699,
+      "magnetics_F1B": 1.067335171515684,
+      "magnetics_F2B": 1.0728849654829027,
+      "magnetics_F3B": 1.0344645547564477,
+      "magnetics_F4B": 0.9235152396095416,
+      "magnetics_F5B": 0.9655392135440253,
+      "magnetics_F6B": 1.0152630421047286,
+      "magnetics_F7B": 0.9835631310253379,
+      "magnetics_F8B": 0.9919529820341617,
+      "magnetics_F9B": 0.9952415287853226,
+      "magnetics_ECOILA": -11.551651401551993
+    },
+    "solenoid_only": {
+      "magnetics_ECOILA": 147.50685845907026
+    },
+    "solenoid_only_constant": {
+      "magnetics_ECOILA": -9.223553646266295
+    },
+    "shared_plus_solenoid": {
+      "magnetics_ECOILA": 145.99611212858767,
+      "shared": 1.0168084935466999
+    },
+    "shared_plus_solenoid_constant": {
+      "magnetics_ECOILA": -9.013313437349723,
+      "shared": 1.0012504081665514
+    },
+    "solenoid_flat": {
+      "flat": 0.00896612986658692
+    },
+    "solenoid_flat_plus_pattern": {
+      "magnetics_ECOILA": -9.26449119472636,
+      "flat": 0.009509963510487551
+    }
+  }
+}

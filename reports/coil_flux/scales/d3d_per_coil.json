@@ -1,0 +1,26 @@
+{
+ "flat_wb_per_ka": 0.0,
+ "machine": "DIII-D",
+ "scales": {
+  "magnetics_ECOILA": 149.05833053694658,
+  "magnetics_F1A": 0.41199504537001985,
+  "magnetics_F1B": 0.6803667538764557,
+  "magnetics_F2A": 0.5648020624974777,
+  "magnetics_F2B": 0.43998968305425024,
+  "magnetics_F3A": 0.7593148500517515,
+  "magnetics_F3B": 0.7483051549662427,
+  "magnetics_F4A": 1.1470591241725856,
+  "magnetics_F4B": 0.9666753592121466,
+  "magnetics_F5A": 0.688838759358049,
+  "magnetics_F5B": 0.9244755430992662,
+  "magnetics_F6A": 1.061265066862596,
+  "magnetics_F6B": 1.0354386922640302,
+  "magnetics_F7A": 1.0715610181484934,
+  "magnetics_F7B": 1.0670264558521065,
+  "magnetics_F8A": 1.027020531387187,
+  "magnetics_F8B": 0.9094082189100021,
+  "magnetics_F9A": 1.0116309613715337,
+  "magnetics_F9B": 0.9742275106448375
+ },
+ "source": "per_coil, fit of 2026-10-10T22:40:21+00:00"
+}

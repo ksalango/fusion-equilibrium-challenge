@@ -1,0 +1,18 @@
+{
+ "flat_wb_per_ka": 0.0,
+ "machine": "MAST",
+ "scales": {
+  "magnetics_p2l_current": 1.0,
+  "magnetics_p2u_current": 1.0,
+  "magnetics_p3l_current": 1.0,
+  "magnetics_p3u_current": 1.0,
+  "magnetics_p4l_current": 1.0,
+  "magnetics_p4u_current": 1.0,
+  "magnetics_p5l_current": 1.0,
+  "magnetics_p5u_current": 1.0,
+  "magnetics_p6l_current": 1.0,
+  "magnetics_p6u_current": 1.0,
+  "magnetics_sol_current": 1.0
+ },
+ "source": "default"
+}

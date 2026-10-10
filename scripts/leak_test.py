@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data-root", type=Path, default=default_data_root())
     parser.add_argument("--distance", type=Path, default=DEFAULT_DISTANCE)
     parser.add_argument("--cache-dir", type=Path, default=bl.DEFAULT_CACHE_DIR)
+    parser.add_argument("--workers", type=int, default=None,
+                        help="processes for the scorer references and the scoring; CPU count minus two by default")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
 
@@ -131,10 +133,13 @@ def main(argv: list[str] | None = None) -> int:
     val_frames = bl.frames_of_shots(val_ids, columns, args.table_dir)
     val_frames["shot"] = val_frames["shot"].astype(str)
     val_by_shot = {s: f.sort_values("frame").iloc[::args.val_frame_stride] for s, f in val_frames.groupby("shot")}
+    workers = bl.default_workers() if args.workers is None else args.workers
     t0 = time.time()
-    references = bl.build_references(val_ids, args.data_root, frame_stride=args.val_frame_stride)
+    references = bl.build_references(val_ids, args.data_root, frame_stride=args.val_frame_stride, workers=workers,
+                                     cache_dir=args.cache_dir / "references")
     references_s = time.time() - t0
-    print(f"scorer references built for {len(val_ids)} shots, {references_s:.0f} s", flush=True)
+    print(f"scorer references for {len(val_ids)} shots {'read from the cache' if references.from_cache else 'built'}, "
+          f"{references_s:.0f} s, {workers} workers", flush=True)
 
     rng = np.random.default_rng(args.seed)
     arms = [("A", 0, []), ("B", 0, leak_ids)]
@@ -148,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         fit_s.append(time.time() - t0)
         t0 = time.time()
         result = bl.score_local(lambda s: bl.predict(model, val_by_shot[s]), val_ids, args.data_root,
-                                frame_stride=args.val_frame_stride, references=references)
+                                frame_stride=args.val_frame_stride, references=references, workers=workers)
         score_s.append(time.time() - t0)
         for subset, mask in (("all", None), ("with_near_repeat", val_with), ("without_near_repeat", ~val_with)):
             terms = bl.score_terms(result.finalize(mask))
@@ -158,7 +163,8 @@ def main(argv: list[str] | None = None) -> int:
 
     table = pd.DataFrame(rows)
     table.to_parquet(args.out / "leak_test.parquet", index=False)
-    timing = {"basis_s": basis_s, "encode_s": encode_s, "references_s": references_s,
+    timing = {"basis_s": basis_s, "encode_s": encode_s, "references_s": references_s, "workers": workers,
+              "references_from_cache": references.from_cache,
               "fit_s_per_arm": float(np.mean(fit_s)), "score_s_per_arm": float(np.mean(score_s))}
     section = render_section(table, args, timing, len(leak_ids), len(train_ids), len(val_ids), int(val_with.sum()))
     with (args.out / "split_report.md").open("a") as f:
