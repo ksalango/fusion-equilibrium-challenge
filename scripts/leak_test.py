@@ -47,19 +47,6 @@ def load_distance(path: Path) -> sim.PairwiseDistance:
                                     n_common_times=f["n_common_times"].astype(np.int32))
 
 
-def fit_basis(train_ids: list[str], params: bl.BaselineParams, data_root: Path, cache_dir: Path) -> tuple[bl.FluxBasis, float]:
-    """The basis of a training set, fitted once and cached by the ids and parameters."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    path = cache_dir / f"basis_{bl.hash_of_ids(train_ids)}_k{params.n_components}_f{params.pca_frames}_s{params.seed}.npz"
-    if path.is_file():
-        return bl.FluxBasis.load(path), 0.0
-    t0 = time.time()
-    order = bl.basis_shot_order(train_ids, params.seed)
-    basis = bl.fit_flux_basis((maps for _, maps in bl.shot_maps(order, data_root)), params.n_components, params.pca_frames)
-    basis.save(path)
-    return basis, time.time() - t0
-
-
 def render_section(rows: pd.DataFrame, args, timing: dict, n_removed: int, n_train: int, n_val: int, n_with: int) -> str:
     lines = [f"## S7 Leak test (review), split `{args.split}`", "",
              f"Threshold {args.threshold}; {'working subsets' if args.working else 'full parts'}; "
@@ -116,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(train_ids)} training shots, {len(val_ids)} validation shots ({int(val_with.sum())} with a near-repeat "
           f"in training); arm B removes {len(leak_ids)} training shots", flush=True)
 
-    basis, basis_s = fit_basis(train_ids, params, args.data_root, args.cache_dir)
+    basis, basis_s = bl.cached_basis(train_ids, params, args.data_root, args.cache_dir)
     print(f"basis: {basis.n_components} components over {basis.n_frames} frames, "
           f"{basis.explained_ratio.sum():.4%} of the variance, {basis_s:.0f} s", flush=True)
     t0 = time.time()

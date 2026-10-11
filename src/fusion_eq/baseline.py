@@ -252,13 +252,19 @@ def shot_maps(shot_ids: Iterable[str], data_root: Path | str, split: str = datas
 
 
 def encode_shots(shot_ids: Sequence[str], basis: FluxBasis, data_root: Path | str,
-                 cache_dir: Path | str = DEFAULT_CACHE_DIR, split: str = dataset.LABELLED_SPLITS[0]) -> np.ndarray:
+                 cache_dir: Path | str = DEFAULT_CACHE_DIR, split: str = dataset.LABELLED_SPLITS[0],
+                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "") -> np.ndarray:
     """Coefficients of the listed shots in frame-table order (sorted ids, frames in time).
 
-    Each shot's coefficients are cached as ``<cache_dir>/<basis hash>/<shot>.npy``
-    (float32) and read from there on the next call with the same basis.
+    Each shot's coefficients are cached as ``<cache_dir>/<basis hash>[_<tag>]/<shot>.npy``
+    (float32) and read from there on the next call with the same basis and tag.
+
+    Args:
+        target: Optional ``(shot_id, stored maps) -> maps`` applied before encoding, for
+            a basis of a derived quantity (the plasma target); ``tag`` then names the
+            cache folder so that two targets of one basis never share a folder.
     """
-    folder = Path(cache_dir) / basis.hash()[:16]
+    folder = Path(cache_dir) / (basis.hash()[:16] + (f"_{tag}" if tag else ""))
     folder.mkdir(parents=True, exist_ok=True)
     parts = []
     for shot_id in sorted(set(shot_ids)):
@@ -266,12 +272,35 @@ def encode_shots(shot_ids: Sequence[str], basis: FluxBasis, data_root: Path | st
         if path.is_file():
             parts.append(np.load(path))
             continue
-        coefs = basis.encode(ft.read_flux_maps([shot_id], split, data_root)).astype(np.float32)
+        maps = ft.read_flux_maps([shot_id], split, data_root)
+        if target is not None:
+            maps = target(shot_id, maps)
+        coefs = basis.encode(maps).astype(np.float32)
         tmp = path.with_suffix(".tmp.npy")
         np.save(tmp, coefs)
         tmp.replace(path)
         parts.append(coefs)
     return np.concatenate(parts, axis=0) if parts else np.zeros((0, basis.n_components), dtype=np.float32)
+
+
+def cached_basis(train_ids: Sequence[str], params: "BaselineParams", data_root: Path | str,
+                 cache_dir: Path | str = DEFAULT_CACHE_DIR, split: str = dataset.LABELLED_SPLITS[0],
+                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "") -> tuple[FluxBasis, float]:
+    """The basis of a training list, fitted once and cached by the ids, the parameters and
+    the tag. Returns ``(basis, seconds spent fitting)``, 0 on a cache hit."""
+    import time
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    name = f"basis_{hash_of_ids(train_ids)}_k{params.n_components}_f{params.pca_frames}_s{params.seed}" + (f"_{tag}" if tag else "")
+    path = cache_dir / f"{name}.npz"
+    if path.is_file():
+        return FluxBasis.load(path), 0.0
+    t0 = time.time()
+    order = basis_shot_order(train_ids, params.seed)
+    maps = ((maps if target is None else target(shot_id, maps)) for shot_id, maps in shot_maps(order, data_root, split))
+    basis = fit_flux_basis(maps, params.n_components, params.pca_frames)
+    basis.save(path)
+    return basis, time.time() - t0
 
 
 # ------------------------------------------------------------------------- ridge

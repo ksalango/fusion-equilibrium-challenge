@@ -43,6 +43,14 @@ RISE_LEVEL = 0.5
 REFERENCE_PHASES = ("rising", "flat_top", "late")
 
 
+def phase_of(ip_over_peak: float, frame: int, n_frames: int, flat_top: float = FLAT_TOP_LEVEL) -> str:
+    """Phase of a frame: ``flat_top`` at or above ``flat_top`` of the peak Ip, otherwise
+    ``rising`` in the first half of the shot and ``late`` in the second."""
+    if not np.isfinite(ip_over_peak) or ip_over_peak < flat_top:
+        return "rising" if frame < n_frames / 2 else "late"
+    return "flat_top"
+
+
 # ----------------------------------------------------------- reference shots and frames
 def reference_shots(index: pd.DataFrame, n_fast_positive: int = 3, n_negative: int = 3, n_slow: int = 2,
                     min_frames: int = 30) -> dict[str, list[str]]:

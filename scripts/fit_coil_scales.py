@@ -65,10 +65,7 @@ def frame_sample(n_frames: int, n: int) -> np.ndarray:
     return np.unique(np.round(np.linspace(0, n_frames - 1, min(n, n_frames))).astype(int))
 
 
-def phase_of(ip_over_peak: float, frame: int, n_frames: int) -> str:
-    if ip_over_peak < FLAT_TOP:
-        return "rising" if frame < n_frames / 2 else "late"
-    return "flat_top"
+phase_of = cs.phase_of
 
 
 def analyse_shot(path: Path, split: str, table: GreenTable, cfg, env, scorer, near, args, orientation_c=None):
