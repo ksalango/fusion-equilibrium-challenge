@@ -11,9 +11,12 @@ their findings to this file.
   `reports/frame_table/column_profile.parquet` (full build, commit 12da376) and
   `notebooks/02_frame_table.ipynb`; from 10 October, `reports/coil_flux/coil_flux_report.md`
   with its parquet tables (fit of 10 October 2026, 50 fit shots and 8 reference shots) and
-  `notebooks/03_coil_flux.ipynb`.
-- Check ids in brackets refer to `docs/QA.md` (0.x), `docs/FRAME_TABLE.md` (Tx) and
-  `docs/COIL_FLUX.md` (Kx).
+  `notebooks/03_coil_flux.ipynb`; from 10 October, `reports/split/split_report.md` with
+  `leak_test.json` and `near_repeats.json`, `splits/split_v1.json`, and
+  `reports/baseline/compare_baselines.md` with `frame_residuals.parquet`,
+  `score_parts.parquet` and the residual maps (run of 10 October 2026, commit 6b73139).
+- Check ids in brackets refer to `docs/QA.md` (0.x), `docs/FRAME_TABLE.md` (Tx),
+  `docs/COIL_FLUX.md` (Kx) and `docs/SPLIT.md` (Sx).
 
 ## Summary
 
@@ -35,6 +38,15 @@ from geometry and currents to about one percent of a frame's flux range outside 
 once the solenoid is represented by a flat term fitted on DIII-D, fixed the sign rule that
 relates the stored map to the physical flux, and found the physics-first structure viable.
 
+The split phase (F54 to F58) showed that the DIII-D test shots are a random draw from the
+same pool as the training shots, that near-repeats of an experiment are common on both sides
+in equal measure, and that the leak they cause for a linear model is small. A random split
+by shot was adopted, with scores reported for all validation shots and for those without a
+near-repeat in training. The baseline phase (F59 to F67) scored four linear models and two
+representation ceilings with the organizers' scorer: a signed ridge on 50 principal
+components reaches S = 0.92, the 50-component basis itself allows 0.97, and nearly all of the
+gap sits in the consistency term, that is in the geometry the scorer derives from the map.
+
 ## Completeness and structure
 
 | Id | Finding | Evidence | Consequence |
@@ -52,7 +64,7 @@ relates the stored map to the physical flux, and found the physics-first structu
 | Id | Finding | Evidence | Consequence |
 | --- | --- | --- | --- |
 | F08 | DIII-D test shots match training shots on every marker examined. | Share recorded at 20 kHz: 70.0% train, 67.0% test. 44-channel core Thomson: 89.9% and 90.4%. 10-channel edge Thomson: 90.7% and 91.9%. Median frames per shot: 241 and 240. Positive Ip after the alignment: 91.2% and 91.3%. Shots with no valid Thomson profile: 0.75% and 0.7%. | A random split by shot is expected to represent the leaderboard. |
-| F09 | Some shots appear to be repeats of the same experiment, with members in both splits. | Several short shots share nearly the same EFIT time window across training and test. Hypothesis, not yet tested. | A split that keeps similar shots together is the stricter test of generalization. To be checked in the analysis phase. |
+| F09 | Some shots appear to be repeats of the same experiment, with members in both splits. | Several short shots share nearly the same EFIT time window across training and test. Confirmed and measured in the split phase (F56). | Near-repeats are equally common in test and training, so a random split by shot represents the leaderboard; a grouped split does not separate them (F56, F57). |
 
 ## Timing
 
@@ -171,15 +183,76 @@ inputs.
 | F52 | About 2 percent of DIII-D frames are double-null; two thirds are lower single-null. | Proxy (the boundary point with the smallest poloidal field) on the 50 random fit shots, 996 frames: lower 68.5 percent, upper 29.7 percent, both 1.8 percent. The 8 reference shots (upper 70.6 percent) are not representative. The scorer has no X-point finder. [D9] | Mirroring adds a comparable number of upper-null examples. The proxy is replaced by a boundary-based count when one is needed. |
 | F53 | The MAST label-free checks give the same sign and order as DIII-D. | Each machine under its coil model, Ip signed: Bz ratio at the reference point, medians -1.35 (MAST) against -2.09 (DIII-D); solenoid flux ratio -0.091 (MAST) against -0.137 (DIII-D, flat term). One DIII-D Bz ratio near +1.7 in the first run was shot `1ca444c006`, a negative-Ip shot normalized by the magnitude of Ip. [K9] | MAST turn conventions are free of gross errors (factor 4 to 23 on a P-coil, 656 on the solenoid) and no more. The checks at the first MAST prediction are listed under "Carried into modelling". |
 
+## Split and near-repeats (phase B, DIII-D)
+
+Shots are compared through a fingerprint: 21 input signals (Ip, the solenoid, the toroidal
+field and the 18 shaping coils) sampled every 100 ms from 100 to 9,000 ms, each scaled by its
+training interquartile range; the distance between two shots is the root mean square
+difference over their common times, so that 0.1 means the currents differ by a tenth of
+their range. Shots covering fewer than five fingerprint times have no distance (65 of
+7,041 training shots, 4 of 874 test shots). A near-repeat at threshold t is another shot at a
+distance below t.
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F54 | DIII-D test inputs match training inputs on all 24 quantities compared. | Per-shot medians over flat-top frames of Ip, the solenoid, the toroidal field, the 18 shaping coils and the three core Thomson summaries (6,959 training against 865 test shots; 6,927 and 861 for Thomson). Largest Kolmogorov-Smirnov statistic 0.041 (`magnetics_F4B`, p = 0.16); every median difference is within 0.054 of the training interquartile range. [S2] | Extends F08 from recording markers to the model inputs. A random draw of training shots represents the test inputs. |
+| F55 | The test shots are a random draw from the same pool as the training shots. | Distance from each test shot to its nearest training shot, 5th, 50th and 95th percentiles: 0.0203, 0.0694, 0.2303. Among training shots, to the nearest other training shot: 0.0186, 0.0659, 0.2248. Kolmogorov-Smirnov statistic 0.033 (p = 0.37). [S3] | Answers the shot-order question: the test shots are not a later or otherwise separate campaign. A held-out set drawn at random from training is as far from the training shots as the test set is. |
+| F56 | Near-repeats of an experiment are common, and equally common in test and training. | Share of shots with a near-repeat in training, training against test: 33.9 against 31.2 percent at threshold 0.05; 71.0 against 70.7 percent at 0.10; 92.1 against 91.9 percent at 0.20. Complete-linkage groups over all 7,915 fingerprinted shots at 0.10: 4,156 groups, 5,258 shots in a group of two or more, largest group 35; at 0.20: 2,166 groups, 7,040 shots in a group, largest 73. [S4] | Confirms F09. The grouped split mode of `make_split.py` is not used: with near-repeats this dense the groups chain together and do not separate near-repeat pairs, and the leaderboard itself contains them in the same proportion. |
+| F57 | Adopted split: random by shot, seed 0, `splits/split_v1.json`. | Drawn 10 October 2026 from the 7,041 training shots, stratified by recording rate and Ip direction: train 5,821, validation 870, local_test 350; working subsets working_train 300 and working_validation 100 inside them. Integrity checks pass (disjoint lists, every shot placed, working lists inside their parents). Near-repeat flags at threshold 0.10 are stored in the file: 4,801 of the 7,041 shots have a near-repeat in `train`; 584 of the 870 validation shots do. Balance, train / validation / local_test / test: share at 20 kHz 0.700 / 0.701 / 0.700 / 0.670; share negative Ip 0.086 / 0.085 / 0.086 / 0.087; median frames 241 / 237 / 243 / 240; share with no core Thomson 0.009 / 0.007 / 0.017 / 0.007. [S5, S6] | Every model is fitted on `train` and reported on `validation`; `local_test` is kept for the final check before a submission. |
+| F58 | Near-repeats leak a little into the plain ridge score, and the shots with one score higher. | Leak test with the plain ridge (50 components): arm A trained on all 5,821 training shots, arm B with the 1,974 training shots that are near-repeats of a validation shot removed, arm C three random removals of the same size. A minus B on the 870 validation shots: +0.0038 in S, against a spread of 0.0006 across the C arms (A minus the C mean +0.0002). On the working subsets: +0.0018 against a spread of 0.0018. Validation shots with a near-repeat in training score S = 0.8075 (R2 psi 0.8628), without 0.7262 (0.7591). [S7] | The leak of a linear model is a lower bound; a flexible model can memorize a near-repeat where a ridge cannot. Reporting rule: every score is given for all validation shots and for the shots without a near-repeat in training. |
+
+## Baselines (phase B, DIII-D validation shots)
+
+Four linear models and two representation ceilings, fitted on the 5,821 training shots
+(1,289,474 frames) and scored with the organizers' scorer on the 870 validation shots at
+every fourth frame (48,186 frames). The flux map is predicted through 50 principal components
+of the training maps (fitted on 100,000 frames, seed 0) by a ridge with alpha 1 on the 25
+frame-table inputs (21 current means, three core Thomson summaries, the Thomson validity flag);
+q95 and betaN come from a separate ridge on the same inputs. The models differ in the inputs
+and in the target: `ridge_raw` takes the inputs as stored and predicts the stored map;
+`ridge_signed` multiplies the current inputs by sign(Ip); `physics_mean` has no learned map
+and predicts the coil flux plus Ip times the mean plasma shape of training; `hybrid_ridge`
+predicts the plasma target T = sign(Ip) (psi_physical minus coil flux) with signed inputs and
+adds the coil flux back. The ceilings pass the true validation maps through the training basis
+of the stored map and of the plasma target, with no model in between. The last four rows take
+q95 and betaN from the scalar ridge of `ridge_signed`, so their differences from it come from
+the flux map alone.
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F59 | Scores on all 870 validation shots. | S, R2 psi, R2 of q95 and betaN, 1 minus D_LCFS, consistency: `ridge_raw` 0.7838, 0.8326, 0.7445, 0.9583, 0.5921; `ridge_signed` 0.9219, 0.9982, 0.8183, 0.9719, 0.7645; `physics_mean` 0.8000, 0.9910, 0.8183, 0.9285, 0.1971; `hybrid_ridge` 0.9219, 0.9982, 0.8183, 0.9719, 0.7646; `ceiling_psi_basis` 0.9717, 1.0000, 0.8183, 0.9950, 0.9972; `ceiling_plasma_basis` 0.9716, 1.0000, 0.8183, 0.9953, 0.9967. Shots without a near-repeat in training: `ridge_signed` 0.9104, `hybrid_ridge` 0.9104, ceilings 0.9686 and 0.9683. The scorer chose the positive flux sign for every model. | The signed ridge is the reference score for later models. Its gap to the ceiling is 0.050 on all shots and 0.058 on the shots without a near-repeat. |
+| F60 | The plain ridge fails on negative-Ip shots; multiplying the current inputs by sign(Ip) removes the failure. | On the 74 negative-Ip validation shots `ridge_raw` scores S = 0.0862 with R2 psi = -0.916 and consistency 0; on the 794 positive-Ip shots 0.8946. `ridge_signed` scores 0.8725 and 0.9239 on the same groups and 0.9219 against 0.7838 on all shots. | Current inputs are multiplied by sign(Ip) before every model (the sign rule of F45 applied to the inputs). The plain ridge is kept as the reference for the starter-kit baseline only. |
+| F61 | More training data does not help a linear model. | Plain ridge in the leak test: S = 0.7656 (R2 psi 0.8252) fitted on the 300 working training shots and scored on the 100 working validation shots at every frame; 0.7838 (0.8326) fitted on all 5,821 training shots and scored on the 870 validation shots. Signed ridge: S = 0.9186 (R2 psi 0.9985) with the 300 training shots on the 100 working validation shots; 0.9219 (0.9982) with the 5,821 training shots on the 870 validation shots. Nineteen times the shots add 0.018 to the plain ridge and 0.003 to the signed ridge. [S7] | Model development runs on the working subsets; a full fit is a confirmation, not a source of improvement, for linear models. |
+| F62 | The hybrid ridge equals the signed ridge. | S 0.9219 for both; R2 psi 0.9982 for both; consistency 0.7646 against 0.7645; the same on every subset. | Expected: the coil flux is linear in the signed currents, which the ridge already has as inputs, so subtracting it from the target changes nothing a linear model can fit. The equality confirms the target machinery (coil flux, sign rule, plasma target and its inverse) round-trips without loss. The physics structure pays off only with a model that is not linear in the currents. |
+| F63 | A basis of 50 principal components is not the limit. | True validation maps through the 50-component basis of the stored map: R2 psi 1.0000, 1 minus D_LCFS 0.9950, consistency 0.9972, S 0.9717 with the ridge's scalars. Through the basis of the plasma target with the coil flux added back: 1.0000, 0.9953, 0.9967, 0.9716. The two bases are equivalent. | 50 components are kept for the plasma part. The representation costs under 0.01 in S; everything above sits in the regression. |
+| F64 | The gap to the ceiling is in the consistency term. | `hybrid_ridge` against `ceiling_plasma_basis` on all shots, contribution to S by term: consistency 0.7646 against 0.9967, 0.046 of the 0.050 gap; boundary 0.9719 against 0.9953, 0.002; R2 psi 0.9982 against 1.0000, 0.001; scalars shared. The scalars at R2 0.8183 cost a further 0.027 against a perfect scalar prediction. | Pixels are nearly solved for DIII-D. The score is now in the geometry the scorer derives from the map (axis position, elongation, triangularity, volume, li) and in the two scalars. Later models are judged on consistency and the scalars, not on R2 psi. |
+| F65 | Negative-Ip shots score lower than positive-Ip shots under the signed ridge. | `ridge_signed`, 74 negative against 794 positive shots: S 0.8725 against 0.9239; consistency 0.5975 against 0.7716; scalars 0.7133 against 0.8224; R2 psi 0.9982 for both. | Open item 11. The map is as accurate; the derived geometry and the scalars are not. Candidates: the 8.6 percent share of negative-Ip training shots, and inputs that are not flipped (toroidal field, Thomson) interacting with the flipped ones. |
+| F66 | The scalars come from separate ridges on the inputs; the physics route is untested. | R2 of q95 and betaN together 0.8183 (`ridge_signed`), 0.7986 on shots without a near-repeat, 0.7133 on negative-Ip shots. The physics combinations of F41 (q95 against the toroidal field over Ip, r = 0.867 on 300 shots) have not been scored. | Scalars are the second largest term of the gap after consistency. Physics formulas are tested with true and then predicted shapes (carried into modelling). |
+| F67 | The residual of the hybrid ridge is concentrated at the plasma core. | Mean absolute residual per pixel over the 48,186 scored frames: peak 0.017 Wb/rad at R = 1.72 m, Z = 0; the region above half the peak spans 0.65 m in Z and over 1.2 m in R, reaching the outer edge of the grid on the midplane; median at the grid edge 0.003. By phase the peak is 0.015 on rising frames (8,958), 0.018 on flat-top (37,465) and 0.023 on late frames (1,763). Per-frame rms residual, median: 0.0060 Wb/rad on rising frames (1.4 percent of the frame's flux range), 0.0065 on flat-top (1.0 percent), 0.0081 on late frames (1.5 percent). The mean-shape model peaks at 0.034 at the same point. | What the ridge misses is how current and pressure are spread inside the plasma, not the coil flux outside it. Candidates are listed under "Carried into modelling". |
+
 ### Carried into modelling
 
 - DIII-D coil model: shaping coils as stored plus the flat solenoid term (F47, F48).
 - Sign handling: the stored map is `-sign(Ip)` times the physical flux; inputs and targets
-  are put in one frame before any model sees them (F45).
+  are put in one frame before any model sees them (F45). Current inputs (Ip, the solenoid
+  and the shaping coils) are multiplied by sign(Ip); the toroidal field and Thomson are not
+  (F60).
+- PCA with 50 components for the plasma part (F63).
+- Split `splits/split_v1.json`; every score reported for all validation shots and for the
+  shots without a near-repeat in training (F57, F58).
 - Up-down mirroring with recalculated coil flux, to give the model symmetric behaviour;
   DIII-D has about 2 percent double-null frames, 1.8 percent on the fit shots (F51, F52).
 - Earliest rising frames: 5 to 6 percent leftover, a candidate for rate-of-change features
   (F50).
+- The core residual (F67) points at how current and pressure are spread inside the plasma.
+  Candidates: more of the Thomson profile than three summaries, history and rate-of-change
+  features, and a current-distribution target.
+- Scalars: test the physics formulas with true and then with predicted shapes (F66). The
+  toroidal-field turn count on MAST, needed to turn the coil current into a field, has to
+  come from published specifications.
+- Transfer needs inputs that mean the same on both machines and an output on a grid scaled
+  to each machine. Not yet tested.
+- First submission: the hybrid ridge on DIII-D, the coil flux alone on MAST.
 - To check at the first MAST prediction: how flat MAST's calculated solenoid flux is across
   the plasma region; the stored-flux sign on MAST; a first MAST score with the coil flux
   alone (F53).
@@ -205,7 +278,9 @@ phase of this project uses it for those purposes.
 4. Resolved with item 8. On the two shots with q95 below 1 the toroidal field signal is
    implausible for their plasma current.
 5. Frame-level counts of failed and placeholder labels (F21).
-6. The repeat-shot hypothesis (F09) and the share of changing-current frames on MAST (F13).
+6. The repeat-shot hypothesis (F09) is resolved by the split phase (F56): near-repeats are
+   common and equally common in test and training. The share of changing-current frames on
+   MAST (F13) remains open.
 7. Resolved. The 62 training shots without a valid core Thomson profile (frame table) and
    the 53 reported by QA differ by definition only, on one- and two-frame shots. Frame table:
    `ts_core_any_valid` is false when no frame has a valid slice (at least half the channels
@@ -238,3 +313,6 @@ phase of this project uses it for those purposes.
 10. The leftover of 5 to 7 percent on the earliest rising frames with a large solenoid current
     (F50): whether it is induced vessel current, and whether rate-of-change inputs or an
     explicit vessel model remove it.
+11. Negative-Ip shots score lower than positive-Ip shots under the signed ridge, in the
+    consistency term and the scalars with an equal R2 psi (F65): whether the cause is the
+    small share of negative-Ip training shots or the inputs that are not flipped.
