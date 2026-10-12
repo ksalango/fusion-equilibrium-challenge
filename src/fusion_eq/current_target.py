@@ -13,6 +13,10 @@ flux uses), and the interior solves ``delta_star(psi) = -mu0 R J`` with those bo
 through one sparse LU factorisation of the conservative stencil. ``response(delta_star(P))``
 returns ``P`` for any flux that is sourced inside the grid. The border Green's matrix is
 cached under the processed-data root, keyed by the grid.
+
+``vacuum_remainder`` splits the plasma target into the flux of the masked current and the
+remainder, the part of ``stored map - coil model`` that current inside the plasma boundary
+does not produce.
 """
 
 from __future__ import annotations
@@ -222,3 +226,33 @@ class PlasmaResponse:
                 np.add.at(rhs, (slice(None), k), -coef[None, :] * out[:, ni, nj])
         out[:, 1:-1, 1:-1] = self._lu.solve(rhs.T).T.reshape(n_f, n_z - 2, n_r - 2)
         return out[0] if single else out
+
+
+# ------------------------------------------------------------------- vacuum remainder
+def vacuum_remainder(psi_stored, coil, ip_ka, mask, response: PlasmaResponse,
+                     machine: str | MachineConfig = "DIII-D") -> tuple[np.ndarray, np.ndarray]:
+    """Splits the plasma target into the flux of the current inside the plasma mask and the rest.
+
+    With ``T = targets.plasma_target(psi_stored, coil, ip_ka)`` and ``J`` the plasma current
+    density of the stored map, ``inside = sign(Ip) response.flux(J mask)`` and
+    ``remainder = T - inside`` on the whole grid. The remainder holds what the coil model
+    leaves unexplained outside the plasma (vacuum field, flat term, current in the vessel)
+    and the flux of the current the mask drops. Both parts are in the target frame, so
+    ``targets.stored_from_target(inside + remainder, coil, ip_ka)`` returns the stored map.
+
+    Args:
+        psi_stored: ``(frames, nZ, nR)`` or one map, as stored.
+        coil: Coil flux of the same frames under the adopted coil model, Wb/rad.
+        ip_ka: Plasma current per frame in kA (sign gives the frame).
+        mask: Boolean plasma mask of the same shape as ``psi_stored`` (``plasma_mask``).
+        response: Plasma response of the machine's grid.
+        machine: Machine with an established sign rule.
+
+    Returns:
+        ``(inside, remainder)`` in Wb/rad, each shaped like ``psi_stored``.
+    """
+    target = targets.plasma_target(psi_stored, coil, ip_ka, machine)
+    j = plasma_current_from_stored(psi_stored, coil, response.grid_r, response.grid_z, ip_ka, machine)
+    sign = targets._per_frame(targets.sign_of_ip(ip_ka), target)
+    inside = sign * response.flux(j * np.asarray(mask, dtype=bool))
+    return inside, target - inside

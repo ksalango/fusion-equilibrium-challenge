@@ -29,8 +29,11 @@ from fusion_eq import frame_table as ft
 from fusion_eq.coil_flux import ADOPTED, GreenTable, coil_flux
 from fusion_eq.machines import MachineConfig, machine_config
 
-# Sign rule constant per machine (F45); MAST is unverified until its first prediction.
-PSI_SIGN_RULE_C = {"DIII-D": -1.0}
+# Sign rule constant per machine. DIII-D (F45) holds for both current directions. MAST (F71)
+# is established on positive-Ip shots only: every MAST test shot has positive Ip, so the
+# stored map is known to have the sign opposite to DIII-D's rule there, and the dependence on
+# sign(Ip) is carried over from DIII-D without a negative-Ip MAST shot to confirm it.
+PSI_SIGN_RULE_C = {"DIII-D": -1.0, "MAST": 1.0}
 
 
 def sign_rule_c(machine: str | MachineConfig) -> float:

@@ -105,6 +105,46 @@ def test_plasma_current_from_stored_maps_recovers_the_current_in_both_directions
         assert np.allclose(j[0][1:-1, 1:-1], sign * j0[1:-1, 1:-1], atol=2e-3 * j0.max())
 
 
+def test_vacuum_remainder_is_zero_for_current_inside_the_mask_and_closes_the_bookkeeping(response):
+    rr, zz = np.meshgrid(GRID_R, GRID_Z)
+    region = np.hypot((rr - 1.7) / 0.5, zz / 0.8) < 1.0
+    j0 = blob(GRID_R, GRID_Z) * region                              # compact support inside the mask
+    plasma = response.flux(j0)
+    i0_ka = gs.total_current(j0, GRID_R, GRID_Z) / ct.A_PER_KA
+    coil = filament_flux(rr, zz, 3.2, 0.9, 2.0e5)
+    for sign in (1.0, -1.0):
+        ip = np.array([sign * i0_ka, sign * i0_ka])
+        stored = targets.to_stored(np.stack([coil + sign * plasma] * 2), ip)
+        inside, remainder = ct.vacuum_remainder(stored, np.stack([coil] * 2), ip, np.stack([region] * 2), response)
+        assert inside.shape == remainder.shape == (2, 65, 65)
+        # Target frame: the same sign-free plasma flux for either current direction.
+        assert np.allclose(inside[0], plasma, atol=1e-8 * np.abs(plasma).max())
+        assert np.abs(remainder).max() < 1e-8 * np.abs(plasma).max()
+        rebuilt = targets.stored_from_target(inside + remainder, np.stack([coil] * 2), ip)
+        assert np.allclose(rebuilt, stored, rtol=0, atol=1e-12 * np.abs(stored).max())
+
+
+def test_vacuum_remainder_holds_the_flat_term_and_the_flux_of_dropped_current(response):
+    rr, zz = np.meshgrid(GRID_R, GRID_Z)
+    region = np.hypot((rr - 1.7) / 0.5, zz / 0.8) < 1.0
+    j_in = blob(GRID_R, GRID_Z) * region
+    j_out = np.zeros((65, 65))
+    j_out[5, 60] = 2e6                                              # current in the vessel, outside the mask
+    coil = filament_flux(rr, zz, 3.2, 0.9, 2.0e5)
+    flat = 0.05
+    plasma = response.flux(j_in + j_out) + flat                     # a flat term has no current
+    ip = gs.total_current(j_in, GRID_R, GRID_Z) / ct.A_PER_KA
+    stored = targets.to_stored(coil + plasma, ip)
+    inside, remainder = ct.vacuum_remainder(stored, coil, ip, region, response)
+    # Linearity: the remainder is exactly the flat term plus the flux of the dropped current.
+    expected = flat + response.flux(j_out)
+    assert np.allclose(remainder, expected, atol=1e-8 * np.abs(expected).max())
+    assert np.allclose(inside, response.flux(j_in), atol=1e-8 * np.abs(plasma).max())
+    # Without a boundary the whole target is remainder.
+    _, everything = ct.vacuum_remainder(stored, coil, ip, np.zeros((65, 65), bool), response)
+    assert np.allclose(everything, targets.plasma_target(stored, coil, ip), atol=1e-14)
+
+
 def test_plasma_mask_and_statistics(starter):
     shot = make_d3d_shot(n_frames=2)
     psi = shot["efit_psirz"][0]

@@ -35,7 +35,20 @@ def test_sign_rule_and_frame_conversions_roundtrip():
     # One map at a time works too.
     assert np.allclose(targets.plasma_target(psi[1], coil[1], ip[1]), t[1])
     with pytest.raises(KeyError):
-        targets.sign_rule_c("MAST")
+        targets.sign_rule_c("JET")
+
+
+def test_mast_sign_rule_is_opposite_to_diii_d_on_positive_ip():
+    # F71: on positive-Ip MAST shots the stored map is the physical flux itself.
+    rng = np.random.default_rng(1)
+    psi = rng.normal(size=(2, 65, 65))
+    coil = rng.normal(size=(2, 65, 65)) * 0.1
+    ip = np.array([600.0, 750.0])
+    assert targets.sign_rule_c("MAST") == 1.0 and targets.sign_rule_c(DIII_D) == -1.0
+    assert np.allclose(targets.to_physical(psi, ip, "MAST"), psi)
+    assert np.allclose(targets.to_physical(psi, ip, "MAST"), -targets.to_physical(psi, ip, "DIII-D"))
+    t = targets.plasma_target(psi, coil, ip, "MAST")
+    assert np.allclose(t, psi - coil) and np.allclose(targets.stored_from_target(t, coil, ip, "MAST"), psi)
 
 
 def test_signed_frames_flip_currents_only_on_negative_ip():
