@@ -1,0 +1,231 @@
+{
+  "run": "2026-10-11_coil_only_v0",
+  "name": "coil_only_v0",
+  "built_at": "2026-10-12T00:08:15+00:00",
+  "repo_commit": "c8b637d3af9b1285014c01fa2ede14eed0e03ec7",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "build --predictor coil_only_v0 --name coil_only_v0 --max-shots 1",
+  "split_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+  "predictor": "coil_only_v0",
+  "predictor_identifiers": {
+    "split_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+    "split_commit": "579fec91dcd22f1b40e29399844b87884ee752e9",
+    "n_train_shots": 5821,
+    "train_hash": "f291664326f2",
+    "params": {
+      "n_components": 50,
+      "alpha": 1.0,
+      "pca_frames": 100000,
+      "seed": 0
+    },
+    "build_params": {
+      "window_ms": 2.0,
+      "rate_window_ms": 10.0,
+      "max_gap_ms": 5.0,
+      "thomson_tol_ms": 20.0,
+      "align_ip": true,
+      "psi_summary": true
+    },
+    "models": {
+      "hybrid_ridge": {
+        "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/baseline/model_hybrid_ridge_f291664326f2.npz",
+        "sha256": "2b6c1c6d3156bad9d2d4cb596ec030de8254acb137f33b6d7ba239ada8535618"
+      },
+      "ridge_signed": {
+        "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/baseline/model_ridge_signed_f291664326f2.npz",
+        "sha256": "b7efc76abd01c63527b1dc5085515f21d4159ed2a04715d0ada6f23cf2387afd"
+      },
+      "mean_shape": {
+        "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/baseline/mean_shape_f291664326f2_adopted.npz",
+        "sha256": "9fb16e5fc8e4b46da03ccfb1229c8091f72c78a74c176173f4c81dd32799f7fb"
+      }
+    },
+    "n_mean_frames": 1289472,
+    "scalar_medians": {
+      "betaN": 1.2124990224838257,
+      "q95": 4.950700998306274
+    },
+    "coil_model": {
+      "DIII-D": {
+        "scales": {
+          "machine": "DIII-D",
+          "scales": {
+            "magnetics_ECOILA": 0.0,
+            "magnetics_F1A": 1.0,
+            "magnetics_F1B": 1.0,
+            "magnetics_F2A": 1.0,
+            "magnetics_F2B": 1.0,
+            "magnetics_F3A": 1.0,
+            "magnetics_F3B": 1.0,
+            "magnetics_F4A": 1.0,
+            "magnetics_F4B": 1.0,
+            "magnetics_F5A": 1.0,
+            "magnetics_F5B": 1.0,
+            "magnetics_F6A": 1.0,
+            "magnetics_F6B": 1.0,
+            "magnetics_F7A": 1.0,
+            "magnetics_F7B": 1.0,
+            "magnetics_F8A": 1.0,
+            "magnetics_F8B": 1.0,
+            "magnetics_F9A": 1.0,
+            "magnetics_F9B": 1.0
+          },
+          "flat_wb_per_ka": 0.00896612986658692,
+          "source": "solenoid_flat, fit of 2026-10-10T18:45:26+00:00"
+        },
+        "geometry_hash": "2715c0981f0daa644f4472e39a61683f1f1aeb39648a875f96726f14e2adb9f7",
+        "grid_hash": "eee1a968198b785d745653555a00772de041db9a67593aff77e82f2a1a0a2619",
+        "n_filaments": 16
+      },
+      "MAST": {
+        "scales": {
+          "machine": "MAST",
+          "scales": {
+            "magnetics_p2l_current": 1.0,
+            "magnetics_p2u_current": 1.0,
+            "magnetics_p3l_current": 1.0,
+            "magnetics_p3u_current": 1.0,
+            "magnetics_p4l_current": 1.0,
+            "magnetics_p4u_current": 1.0,
+            "magnetics_p5l_current": 1.0,
+            "magnetics_p5u_current": 1.0,
+            "magnetics_p6l_current": 1.0,
+            "magnetics_p6u_current": 1.0,
+            "magnetics_sol_current": 1.0
+          },
+          "flat_wb_per_ka": 0.0,
+          "source": "default"
+        },
+        "geometry_hash": "c3a279b0bdcbd2466c9e7f92da672fcc7ca6f1b0af9c4abdc55429f171be0202",
+        "grid_hash": "b514009cbf4ee10777fcff066c2feb95ad8a0d7322b024da1009832539c7c69e",
+        "n_filaments": 16
+      }
+    },
+    "mast_sign_rule_c": -1.0,
+    "mast_scalars": "placeholder: DIII-D training medians",
+    "d3d_flux_model": "coil flux only (adopted coil model), no plasma term"
+  },
+  "fallback_scalar_medians": {
+    "betaN": 1.2124990224838257,
+    "q95": 4.950700998306274
+  },
+  "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
+  "folds": {
+    "DIII-D": {
+      "machine": "DIII-D",
+      "n_shots": 1,
+      "n_frames": 240,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "0047b7837b",
+      "last_shot": "0047b7837b",
+      "seconds": 0.23183989524841309
+    },
+    "MAST": {
+      "machine": "MAST",
+      "n_shots": 1,
+      "n_frames": 53,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "0035568738",
+      "last_shot": "0035568738",
+      "shot_checks": [
+        {
+          "index": 0,
+          "shot": "0035568738",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 753.2074890136719,
+          "sol_median_ka": -24.24605026245117,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.18976790850556335
+        }
+      ],
+      "seconds": 0.016628026962280273,
+      "mast_checks_summary": {
+        "shots_by_ip_sign": {
+          "positive": 1,
+          "negative": 0,
+          "mixed_or_absent": 0
+        },
+        "sol_flux_rel_std": 0.401478256770935,
+        "sol_range_share_of_coil_range_quantiles": {
+          "0.05": 0.18976790850556335,
+          "0.5": 0.18976790850556335,
+          "0.95": 0.18976790850556335
+        }
+      }
+    }
+  },
+  "files": {
+    "diii_d_public_test.npz": {
+      "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-11_coil_only_v0/diii_d_public_test.npz",
+      "sha256": "37a337ecafc79631be30f3a895b409d919066f125856f98788df9ce00d8b8196",
+      "bytes": 1421578
+    },
+    "mast_public_test.npz": {
+      "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-11_coil_only_v0/mast_public_test.npz",
+      "sha256": "79bb573392c43b2d81ea048cee79b292545906fb1ac5505cddcf2673ef3935aa",
+      "bytes": 352007
+    }
+  },
+  "max_shots": 1,
+  "build_seconds": 0.3030710220336914,
+  "score_local": {
+    "scored_at": "2026-10-12T00:11:03+00:00",
+    "part": "validation",
+    "n_shots": 870,
+    "frame_stride": 4,
+    "file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-11_coil_only_v0/local_validation.npz",
+    "file_sha256": "42c792e0a78085613ffbdc4d0f636bccbb674ef873f19730f3e3ae698e813010",
+    "fold": {
+      "machine": "DIII-D",
+      "n_shots": 870,
+      "n_frames": 191411,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "00000a10ac",
+      "last_shot": "ff5a657ba8"
+    },
+    "terms": {
+      "S": 0.122752,
+      "r2_psi": -1.913739,
+      "r2_qb": 0.818345,
+      "one_minus_dlcfs": 0.0,
+      "consistency": 0.0,
+      "psi_sign": 1,
+      "n_shots": 870,
+      "r2_R_axis": -279.525021,
+      "r2_Z_axis": -1181.99291,
+      "r2_kappa": -0.0,
+      "r2_tri_top": -0.0,
+      "r2_tri_bot": -0.0,
+      "r2_volume": -0.0,
+      "r2_li": -0.0,
+      "r2_q95": 0.70303,
+      "r2_betaN": 0.933661
+    },
+    "expected_S_baseline_v0_validation_stride4": 0.9219,
+    "seconds": 168.22616410255432
+  }
+}

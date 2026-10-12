@@ -142,20 +142,62 @@ class BaselineV0:
             f"betaN {self.scalar_medians['betaN']:.3f}")
         return self.identifiers
 
-    def predict_shot(self, shot: io.Shot, machine: str) -> bl.Prediction:
+    def _check_ready(self) -> None:
         if self.model_set is None or self.table_mast is None or self.scalar_medians is None:
             raise RuntimeError("call setup() first")
+
+    def _frames(self, shot: io.Shot, machine: str):
+        return ft.build_shot_frames(shot, submission.TEST_CONFIGS[machine], self.build_params, with_labels=False)
+
+    def _predict_mast(self, shot: io.Shot) -> bl.Prediction:
+        """Coil flux alone on the scorer's grid, DIII-D sign rule, scalars at the DIII-D medians."""
+        cfg = machine_config("MAST")
+        currents = cf.currents_at_frames(shot, self.table_mast.columns)
+        ip = cf.currents_at_frames(shot, [cfg.ip_column])[:, 0]
+        coil = self.table_mast.flux(currents, self.scales_mast)
+        # Same rule as DIII-D (F45): psi_stored = c sign(Ip) psi_physical with c = -1.
+        psi = targets.sign_rule_c("DIII-D") * targets.sign_of_ip(ip)[:, None, None] * coil
+        n = psi.shape[0]
+        return bl.Prediction(psirz=psi.astype(np.float32), q95=np.full(n, self.scalar_medians["q95"]),
+                             betaN=np.full(n, self.scalar_medians["betaN"]))
+
+    def predict_shot(self, shot: io.Shot, machine: str) -> bl.Prediction:
+        self._check_ready()
         if machine == "DIII-D":
-            frames = ft.build_shot_frames(shot, submission.TEST_CONFIGS[machine], self.build_params, with_labels=False)
-            return self.model_set.baselines()["hybrid_ridge"].predict(frames)
+            return self.model_set.baselines()["hybrid_ridge"].predict(self._frames(shot, machine))
         if machine == "MAST":
+            return self._predict_mast(shot)
+        raise ValueError(f"unknown machine {machine!r}")
+
+
+@submission.register("coil_only_v0")
+class CoilOnlyV0(BaselineV0):
+    """Calculated coil flux alone on both machines: the reference for how much of the map the
+    coils explain without any plasma model.
+
+    DIII-D: the coil flux under the adopted coil model (shaping coils as stored, flat solenoid
+    term), converted to the stored frame with the sign rule, ``psi_stored = c sign(Ip) coil``;
+    q95 and betaN from the ``ridge_signed`` scalar ridge, as in ``baseline_v0``. MAST: as in
+    ``baseline_v0``. Same setup and files as ``baseline_v0``.
+    """
+
+    name = "coil_only_v0"
+
+    def setup(self, log: Callable[[str], None] = print) -> dict:
+        identifiers = super().setup(log)
+        identifiers["d3d_flux_model"] = "coil flux only (adopted coil model), no plasma term"
+        return identifiers
+
+    def predict_shot(self, shot: io.Shot, machine: str) -> bl.Prediction:
+        self._check_ready()
+        if machine == "DIII-D":
             cfg = machine_config(machine)
-            currents = cf.currents_at_frames(shot, self.table_mast.columns)
-            ip = cf.currents_at_frames(shot, [cfg.ip_column])[:, 0]
-            coil = self.table_mast.flux(currents, self.scales_mast)
-            # Same rule as DIII-D (F45): psi_stored = c sign(Ip) psi_physical with c = -1.
-            psi = targets.sign_rule_c("DIII-D") * targets.sign_of_ip(ip)[:, None, None] * coil
-            n = psi.shape[0]
-            return bl.Prediction(psirz=psi.astype(np.float32), q95=np.full(n, self.scalar_medians["q95"]),
-                                 betaN=np.full(n, self.scalar_medians["betaN"]))
+            frames = self._frames(shot, machine)
+            ip = frames["ip__mean"].to_numpy(dtype=np.float64)
+            coil = targets.coil_flux_of_frames(self.model_set.table, frames, self.model_set.scales, cfg)
+            psi = targets.stored_from_target(np.zeros_like(coil), coil, ip, cfg)
+            q95, beta_n = self.model_set.baselines()["ridge_signed"].scalars(frames)
+            return bl.Prediction(psirz=psi.astype(np.float32), q95=np.asarray(q95), betaN=np.asarray(beta_n))
+        if machine == "MAST":
+            return self._predict_mast(shot)
         raise ValueError(f"unknown machine {machine!r}")

@@ -1,0 +1,9 @@
+rule,train frames,train shots,val frames,val shots
+invalid_label,0,0,0,0
+tf_under_threshold,10,1,0,0
+ip_under_fraction_of_peak,1,1,0,0
+q95_outside_band,259,113,112,44
+betan_outside_band,338,88,161,30
+excluded_shots,0,0,0,0
+union of candidates,568,150,263,53
+valid-label frames,16423,300,5551,100

@@ -1,0 +1,68 @@
+{
+  "working": true,
+  "frame_stride": 4,
+  "n_turns": 144,
+  "pressure_column": "ts_core_pe_mean__interp",
+  "filter": {
+    "tf_under_threshold": false,
+    "ip_under_fraction_of_peak": false,
+    "q95_outside_band": false,
+    "betan_outside_band": false,
+    "excluded_shots": false
+  },
+  "rule_params": {
+    "tf_min_ka": 50.0,
+    "ip_over_peak_min": 0.1,
+    "q95_band": [
+      2.91,
+      11.76
+    ],
+    "betan_band": [
+      0.08,
+      3.31
+    ],
+    "excluded_shots": [
+      "5df1630aa7",
+      "955c35c962"
+    ]
+  },
+  "train_hash": "2d3a250c8f13",
+  "n_train_shots": 300,
+  "n_val_shots": 100,
+  "kept_train_frames": 16423,
+  "kept_val_frames": 5551,
+  "q95_constant": {
+    "true_train": 0.7709472425293099,
+    "true_val": 0.7853667829485683,
+    "pred_train": 0.7803429273123688,
+    "implied_turns_true_train": 111.01640292422063
+  },
+  "betan_constant": {
+    "true_train": 3.6718419873535897,
+    "true_val": 3.4960259719581694,
+    "pred_train": 3.673085079054882
+  },
+  "shape_agreement_r2": {
+    "R_geo": 0.6823341759091819,
+    "a": 0.6268583347596379,
+    "kappa": 0.5567492135875018,
+    "tri_top": 0.9212993176203191,
+    "tri_bot": 0.9034123495368285,
+    "eps": 0.7472927672338852
+  },
+  "q95_calc": {
+    "levels": [
+      0.95,
+      0.94,
+      0.96
+    ],
+    "median_label_over_calc_true": {
+      "0.95": 0.9974253527358123,
+      "0.94": 1.0390819419464203,
+      "0.96": 0.9522514764637557
+    },
+    "median_label_over_calc_pred": 0.999558184357336,
+    "failed_true_val": 0,
+    "failed_pred_val": 0
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "scoring_version": "3.3.1",
+  "d3d_S": 0.924908,
+  "d3d_r2_psi": 0.998125,
+  "d3d_r2_qb": 0.821942,
+  "d3d_dlcfs": 0.028973,
+  "d3d_consistency": 0.77773,
+  "d3d_r2_psi_per_shot_mean": 0.997362,
+  "d3d_lcfs_fail_frac": 0.0,
+  "d3d_psi_sign": 1,
+  "d3d_r2_psi_unflipped": 0.998125,
+  "mast_S": 0.000252,
+  "mast_r2_psi": -1.357005,
+  "mast_r2_qb": -0.403863,
+  "mast_dlcfs": 0.999999,
+  "mast_consistency": 0.001258,
+  "mast_r2_psi_per_shot_mean": -1.412094,
+  "mast_lcfs_fail_frac": 0.982787,
+  "mast_psi_sign": -1,
+  "mast_r2_psi_unflipped": -12.848315,
+  "g_ratio": 0.000272
+}

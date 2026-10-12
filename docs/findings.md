@@ -4,7 +4,7 @@ Findings from the data quality phase of the Fusion Equilibrium Challenge project
 evidence for each and its consequence for data preparation and modelling. Later phases add
 their findings to this file.
 
-- Period covered: 4 to 10 October 2026.
+- Period covered: 4 to 11 October 2026.
 - Evidence: `reports/qa/qa_report.md` (full run over 9,124 shots, with the Ip alignment
   enabled), `reports/qa_before_ipfix/qa_report.md` (the same run before the alignment),
   `notebooks/01_qa.ipynb`; from 6 October, `reports/frame_table/frame_table_report.md`,
@@ -14,7 +14,13 @@ their findings to this file.
   `notebooks/03_coil_flux.ipynb`; from 10 October, `reports/split/split_report.md` with
   `leak_test.json` and `near_repeats.json`, `splits/split_v1.json`, and
   `reports/baseline/compare_baselines.md` with `frame_residuals.parquet`,
-  `score_parts.parquet` and the residual maps (run of 10 October 2026, commit 6b73139).
+  `score_parts.parquet` and the residual maps (run of 10 October 2026, commit 6b73139); from
+  11 October, `reports/scalars/summary.md`, `summary.json` and `label_filter_costs.csv`
+  (`notebooks/05_scalars.ipynb`, working lists, stride 4),
+  `reports/submissions/2026-10-11_baseline_v0/run.json` with the Codabench result of
+  submission 979130 (`codabench_scoring_result/`, scoring version 3.3.1),
+  `reports/submissions/2026-10-11_coil_only_v0/run.json`, and
+  `reports/current_target/ceiling.md` and `ceiling.json` (`scripts/current_ceiling.py`).
 - Check ids in brackets refer to `docs/QA.md` (0.x), `docs/FRAME_TABLE.md` (Tx),
   `docs/COIL_FLUX.md` (Kx) and `docs/SPLIT.md` (Sx).
 
@@ -37,6 +43,12 @@ The coil-flux phase (F45 to F53) established that the flux of the coils can be c
 from geometry and currents to about one percent of a frame's flux range outside the plasma,
 once the solenoid is represented by a flat term fitted on DIII-D, fixed the sign rule that
 relates the stored map to the physical flux, and found the physics-first structure viable.
+
+The first submission (F68 to F72) scored 0.9249 on DIII-D and 0.0003 on MAST, where the
+coil flux alone was submitted; MAST stores the flux with the opposite sign. The scalar
+study (F73 to F77) found that q95 calculated from the map needs no fitted constant and
+confirms 144 toroidal-field turns on DIII-D, while betaN from the electron pressure stays
+behind the ridge. The current-distribution ceiling (F78) is recorded without a decision.
 
 The split phase (F54 to F58) showed that the DIII-D test shots are a random draw from the
 same pool as the training shots, that near-repeats of an experiment are common on both sides
@@ -230,6 +242,28 @@ the flux map alone.
 | F66 | The scalars come from separate ridges on the inputs; the physics route is untested. | R2 of q95 and betaN together 0.8183 (`ridge_signed`), 0.7986 on shots without a near-repeat, 0.7133 on negative-Ip shots. The physics combinations of F41 (q95 against the toroidal field over Ip, r = 0.867 on 300 shots) have not been scored. | Scalars are the second largest term of the gap after consistency. Physics formulas are tested with true and then predicted shapes (carried into modelling). |
 | F67 | The residual of the hybrid ridge is concentrated at the plasma core. | Mean absolute residual per pixel over the 48,186 scored frames: peak 0.017 Wb/rad at R = 1.72 m, Z = 0; the region above half the peak spans 0.65 m in Z and over 1.2 m in R, reaching the outer edge of the grid on the midplane; median at the grid edge 0.003. By phase the peak is 0.015 on rising frames (8,958), 0.018 on flat-top (37,465) and 0.023 on late frames (1,763). Per-frame rms residual, median: 0.0060 Wb/rad on rising frames (1.4 percent of the frame's flux range), 0.0065 on flat-top (1.0 percent), 0.0081 on late frames (1.5 percent). The mean-shape model peaks at 0.034 at the same point. | What the ridge misses is how current and pressure are spread inside the plasma, not the coil flux outside it. Candidates are listed under "Carried into modelling". |
 
+## Submission, scalars and the current target (phase E, 11 October)
+
+Working lists of `split_v1.json` for the scalar study and the ceiling (300 training and 100
+validation shots, every 4th frame, 16,423 and 5,551 frames with both labels finite); the
+full validation list (870 shots, every 4th frame) for the local scores of the two predictors.
+Pooled R2 is the scorer's, one R2 over all frames, unclipped. Readings that were not tested
+are marked as readings.
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F68 | The hybrid ridge gets the triangularity from the coil flux and the rest of the geometry from the plasma part; negative-Ip shots are weak on the axis and the elongation. | `hybrid_ridge` on the 870 validation shots: S 0.9219, R2 psi 0.9982, R2 q95 and betaN 0.8183 (q95 0.7030, betaN 0.9337), 1 minus D_LCFS 0.9719, consistency 0.7646 with R_axis 0.728, Z_axis 0.668, kappa 0.579, tri_top 0.949, tri_bot 0.950, volume 0.826, li 0.651. `physics_mean` (coil flux plus the mean shape, no learned flux): tri_top 0.702 and tri_bot 0.643 against R_axis -0.759, Z_axis -0.137, kappa -0.214, volume 0.034 and li -0.164. On the 74 negative-Ip shots the hybrid ridge gives R_axis 0.372, Z_axis 0.196 and kappa 0.361 against 0.737, 0.693 and 0.592 on the 794 positive-Ip shots; li 0.661 against 0.649; tri_top 0.890 and tri_bot 0.913 against 0.952 and 0.952. | The shape terms the coil flux already sets need no plasma model; the axis position, elongation, volume and li are the plasma part's job. Open item 11 narrows to the axis and the elongation of negative-Ip shots. |
+| F69 | Storing the maps as float16 costs 0.0003 in S, all of it in the shape terms. | The same hybrid-ridge predictions on the 870 validation shots at stride 4: S 0.921537 read back from the npz file against 0.921861 in memory; R2 psi 0.9982 for both and the scalars identical (0.818345); 1 minus D_LCFS 0.971705 against 0.971869; consistency 0.763021 against 0.764562 with R_axis 0.7273 against 0.7283, Z_axis 0.6636 against 0.6677, kappa 0.5759 against 0.5791, tri_top 0.9482 against 0.9491, tri_bot 0.9494 against 0.9503, volume 0.8261 against 0.8262, li 0.6506 against 0.6512. | float16 stays the submission format. The derived geometry reacts to the third significant digit of the map, which the pixel term does not. |
+| F70 | The submission's shot order is the sorted order of the local file names, the order of the Hub stream. | `check-order` compared the Hub stream of each public-test config with the local file at the same rank by the length, first and last value of `efit_times` and a hash of `efit_times` and the raw plasma current, and passed on both machines (reported by Kamia; the Hub rows carry no shot id). The build predicted 874 DIII-D shots (193,359 frames, first `0047b7837b`, last `ff6af6ea51`) and 1,206 MAST shots (69,075 frames, `0035568738` to `fffdb8dc56`); Codabench scored 874 and 1,206 shots with none missing, and the lowest per-shot R2 psi among the DIII-D worst 20 is 0.9427, which a shifted order could not give. | Key index = rank of the file name in sorted order of `data/raw/data/<config>/`. No further order check is needed for later submissions built by the same pipeline. |
+| F71 | First submission (Codabench 979130): DIII-D 0.9249 as the local validation score predicted; MAST 0.0003 with the coil flux alone, and MAST stores the flux with the opposite sign. | DIII-D (874 shots, scoring version 3.3.1): S 0.9249, R2 psi 0.9981, R2 q95 and betaN 0.8219 (q95 0.7093, betaN 0.9346), D_LCFS 0.0290, consistency 0.7777 (R_axis 0.720, Z_axis 0.707, kappa 0.648, tri_top 0.950, tri_bot 0.961, volume 0.825, li 0.633), no boundary failure, flux sign +1. Local validation of the same model (870 shots, stride 4, through the npz file): 0.9215, 0.9982, 0.8183, 0.0283, 0.7630. MAST (1,206 shots): S 0.0003, R2 psi -1.357 after the scorer applied the sign -1 (-12.85 as submitted), R2 q95 and betaN -0.404 (q95 -0.747, betaN -0.060 at the DIII-D medians 4.95 and 1.21), D_LCFS 1.000 with the boundary failing on 98.3 percent of frames, consistency 0.0013 with the derivation failing on 70.6 percent; G_ratio 0.000272. Every MAST test shot has positive Ip; the calculated solenoid flux has a relative spread of 0.40 across the grid and carries a median 0.24 of the coil flux range (5th to 95th percentile 0.11 to 0.40). | The local validation score is a reliable estimate of the DIII-D leaderboard score (0.003 below it). MAST stores `+sign(Ip)` times the physical flux where DIII-D stores `-sign(Ip)` times it, matching the scorer's `AXIS_SIGN` (+1 MAST, -1 DIII-D); the sign rule constant becomes per machine. The scorer normalizes the sign, so the placement cost nothing, but every MAST target and sanity check uses the MAST constant from now on. |
+| F72 | The coil flux alone scores below zero on DIII-D as on MAST; the MAST value is in the range a correct coil flux without a plasma gives. | `coil_only_v0` on the 870 DIII-D validation shots at stride 4 (adopted coil model with the flat solenoid term, ridge scalars): R2 psi -1.914, 1 minus D_LCFS 0.000, consistency 0.000, S 0.1228 (the 0.8183 scalar term carries all of it). MAST on Codabench with every scale 1 and no flat term: -1.357 after sign normalization. | Shown: the stored map's variance between frames is dominated by the plasma on both machines, so a negative pooled R2 is what the coil flux alone gives and the MAST value is not evidence against the MAST coil model. Not shown: whether the MAST coil flux is right to the one percent of F47 or whether MAST needs a flat solenoid term; that needs the plasma-residual test on the three sample shots or a first plasma model, and the sign constant of F71 applied. |
+| F73 | The q95 formula needs a constant of 0.77 and still drifts with the inverse aspect ratio; a correction on quantities without units closes most of the gap. | Validation frames of the working list (5,551). Least-squares multiplier on the formula with the true shapes: 0.771 on the training frames (111 turns if read as a turn count), 0.785 on validation. Stage 1 (true shapes): formula alone R2 0.307, times the constant 0.948, with the ridge correction 0.967, with the gradient-boosted correction 0.978; the ridge baseline on the inputs 0.736 on the same frames. Stage 2 (shapes from the hybrid-ridge maps, constant and corrections refitted on predicted training shapes): 0.326, 0.937, 0.950, 0.969; the stage-1 corrections applied to the predicted shapes 0.951 and 0.961. Negative-Ip frames, stage 1: constant 0.986, gradient-boosted 0.983, ridge baseline 0.744. Label over formula, bin medians: from 0.83 at eps 0.33 to 0.76 at eps 0.37 and from 0.83 at delta 0.3 to 0.77 at delta 0.8; flat in kappa (0.78 to 0.81) and in the Thomson peak-to-mean ratio; from 0.77 at half the peak current to 0.80 at the peak. | The formula's aspect-ratio and triangularity factors over-correct on DIII-D shapes (reading). With a correction the formula beats the ridge by 0.23 in R2 at both stages, but the direct calculation of F74 does as well at stage 1 without any fit. |
+| F74 | q95 calculated from the map needs no constant: the median of label over calculated is 0.997 with 144 turns, which confirms the DIII-D turn count. | Field-line integral on the 0.95 surface of the scorer's boundary, 5,551 validation frames, no failure. Stage 1 (true maps): R2 0.9685, negative-Ip frames 0.9942, median label over calculated 0.9974. At 0.94: R2 0.9660, median 1.0391; at 0.96: 0.9293 and 0.9523. Stage 2 (hybrid-ridge maps): R2 0.9388, negative-Ip 0.9722, median 0.9996, no failure. | 144 turns is confirmed for DIII-D to 0.3 percent at the median; the 111 turns of F73 was the formula's shape factor, not the field. The surface matters: 0.01 in psi_N moves the median by 4 to 5 percent. At stage 2 the calculation (0.939) sits below the corrected formula (0.969) because it inherits the shape errors of the predicted map (F76); on negative-Ip frames it is the best at both stages. |
+| F75 | betaN from the electron pressure stays behind the ridge on the inputs; predicting betaN times Ip does not help. | Constant factor label over formula (core `pe_mean`): 3.67 on training, 3.50 on validation. Stage 1: formula alone R2 -0.840, times the constant 0.790, ridge correction 0.813, gradient-boosted correction 0.851; the ridge baseline 0.940 on the same frames (0.941 refitted on them). Stage 2: 0.800, 0.850, 0.899; stage-1 corrections on predicted shapes 0.824 and 0.840. Negative-Ip frames: gradient-boosted 0.797 at stage 1 and 0.829 at stage 2 against the ridge's 0.891. A ridge on the inputs predicting betaN times the absolute Ip, divided afterwards: 0.924 against 0.941 direct. | One electron-pressure summary carries less of betaN than the full input set does (reading: the factor of 3.7 is more than the electron share of the pressure, so the summary also under-reads the stored pressure). betaN keeps a learned correction; the question is which of its inputs transfer. |
+| F76 | Shapes read from the hybrid-ridge maps agree with the true shapes to R2 0.56 to 0.92. | Pooled R2 of the predicted against the true shape quantities on the 5,551 validation frames: R_geo 0.682, a 0.627, kappa 0.557, tri_top 0.921, tri_bot 0.903, eps 0.747. | The same ranking as the scorer's consistency terms (F68: kappa 0.58, triangularity 0.95). Any scalar derived from the predicted map is capped by this agreement until the plasma part improves. |
+| F77 | The candidate label-filter rules cost under 5 percent of the frames on the working lists and are frame filters, not shot filters. | Frames with both labels finite: 16,423 of 16,423 on the 300 training shots, 5,551 of 5,551 on the 100 validation shots. Toroidal field under 50 kA: 10 training frames in 1 shot, none on validation. Ip under 0.1 of the peak: 1 training frame. q95 outside the F43 band: 259 training frames (1.6 percent) in 113 shots, 112 validation frames in 44 shots. betaN outside the band: 338 (2.1 percent) in 88 shots, 161 in 30. The two flagged shots are not in the working lists. Union: 568 training frames (3.5 percent) in 150 shots, 263 validation frames (4.7 percent) in 53 shots. No rule was applied in the scalar study. | The band rules touch half the shots at a few frames each, so they remove ramp frames rather than shots (reading). The lighter filter (impossible values, field, Ip fraction, the two shots) costs almost nothing on these lists; the bands are the open choice (carried into modelling). |
+| F78 | Current-distribution ceiling: a map rebuilt by physics from the exact masked current density scores S 0.978, the unmasked current 0.991, the present plasma-flux target 0.999; the PCA of the current costs 0.003 at 20 components and nothing at 50. | Working lists, 100 validation shots, 5,551 frames at stride 4, true q95 and betaN for every variant, coil flux under the adopted model plus the rebuilt plasma flux. S, R2 psi, 1 minus D_LCFS, consistency, then R_axis, Z_axis, kappa, tri_top, tri_bot, volume, li: (a) masked 0.9784, 0.9984, 0.9844, 0.9041; 0.934, 0.999, 0.955, 0.987, 0.983, 0.485, 0.985. (b) unmasked 0.9913, 0.9945, 0.9905, 0.9763; 0.997, 1.000, 0.902, 0.990, 0.983, 0.967, 0.996. (c) masked, divided by Ip, PCA on the native grid fitted on 16,423 training frames: 20 components 0.9755, 0.9984, 0.9790, 0.8924; 0.933, 0.996, 0.939, 0.965, 0.939, 0.492, 0.982. 50 components 0.9780, 0.9984, 0.9826, 0.9029; 0.936, 0.999, 0.953, 0.981, 0.974, 0.493, 0.985. 100 components 0.9780, 0.9984, 0.9832, 0.9026; 0.934, 0.999, 0.953, 0.982, 0.977, 0.488, 0.985. (d) plasma flux through the 50-component basis 0.9990, 1.0000, 0.9953, 0.9971; 1.000, 1.000, 0.991, 0.996, 0.995, 1.000, 0.998. Mask: boundary found on 5,551 of 5,551 frames; share of the absolute current outside the boundary, median 0.063 (5th to 95th percentile 0.038 to 0.114); masked current over the measured Ip, median 0.9975 (0.989 to 1.007). Runtime 85 s with 8 workers. | Recorded without a decision on the target. The numbers to weigh: the mask drops 6 percent of the current and with it the volume term (0.485 against 0.967 unmasked) while the unmasked current keeps the R2 psi lower (0.9945 against 0.9984); the plasma-flux target has no such loss at 50 components (0.9990). |
+
 ### Carried into modelling
 
 - DIII-D coil model: shaping coils as stored plus the flat solenoid term (F47, F48).
@@ -252,10 +286,24 @@ the flux map alone.
   come from published specifications.
 - Transfer needs inputs that mean the same on both machines and an output on a grid scaled
   to each machine. Not yet tested.
-- First submission: the hybrid ridge on DIII-D, the coil flux alone on MAST.
-- To check at the first MAST prediction: how flat MAST's calculated solenoid flux is across
-  the plasma region; the stored-flux sign on MAST; a first MAST score with the coil flux
-  alone (F53).
+- First submission made: the hybrid ridge on DIII-D, the coil flux alone on MAST (F71). The
+  three MAST checks of F53 are answered in F71 and F72: solenoid flux relative spread 0.40;
+  MAST stores `+sign(Ip)` times the physical flux (sign constant per machine, +1 for MAST,
+  -1 for DIII-D); the coil flux alone scores R2 psi -1.357 on MAST against -1.914 on DIII-D.
+- Scalars, from the study of 11 October (F73 to F77):
+  - q95 is calculated from the predicted map (field-line integral on the 0.95 surface, 144
+    turns on DIII-D, no fitted constant; F74). On MAST the same calculation without a learned
+    correction; the MAST turn count is to be verified from a published source before it is
+    used, since the calculation is linear in it.
+  - betaN stays formula times correction (F75). The correction is to be given transferable
+    coil features (quantities without units, and the coil flux where a feature needs it)
+    instead of the raw-input ridge; which inputs transfer is untested (reading).
+  - Training uses the lighter label filter: impossible values, toroidal field under 50 kA,
+    Ip under 0.1 of its peak, the two flagged shots (`5df1630aa7`, `955c35c962`). The
+    percentile bands of F43 are to be checked against it on the full lists before they are
+    added (F77).
+- Current-distribution target: the ceiling numbers of F78 are recorded; the choice between
+  the current density and the plasma flux as the target is not made.
 
 ## Use of MAST labels
 

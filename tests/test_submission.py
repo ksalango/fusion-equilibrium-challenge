@@ -355,6 +355,40 @@ def test_baseline_v0_fits_once_then_loads_and_predicts_both_machines(environment
     assert np.allclose(predictor.predict_shot(m_shot, "MAST").psirz, -m_pred.psirz)
 
 
+def test_coil_only_v0_is_the_coil_flux_with_the_baseline_scalars(environment):
+    env = environment
+    from fusion_eq.predictors import BaselineV0, CoilOnlyV0
+    params = bl.BaselineParams(n_components=2, alpha=1.0, pca_frames=None, seed=0)
+    args = (env["split"], env["cache"], env["green_dir"], env["table_root"], env["root"])
+    coil_only = CoilOnlyV0(*args, params=params)
+    ids = coil_only.setup(log=lambda m: None)
+    assert "coil_only_v0" in sub.REGISTRY and coil_only.name == "coil_only_v0" and "coil flux only" in ids["d3d_flux_model"]
+    baseline = BaselineV0(*args, params=params)
+    baseline.setup(log=lambda m: None)
+    for shot_id, sign in (("a1", 1.0), ("b2", 1.0)):
+        shot = sub.strip_labels(io.load_shot(env["root"] / "diii_d_public_test" / f"d3d_shot_{shot_id}.parquet"))
+        pred = coil_only.predict_shot(shot, "DIII-D")
+        frames = ft.build_shot_frames(shot, "diii_d_public_test", ft.BuildParams(), False)
+        ip = frames["ip__mean"].to_numpy(dtype=np.float64)
+        coil = targets.coil_flux_of_frames(coil_only.model_set.table, frames, coil_only.model_set.scales)
+        # The stored map is -sign(Ip) times the coil flux (flat solenoid term included), nothing else.
+        assert np.allclose(pred.psirz, -targets.sign_of_ip(ip)[:, None, None] * coil, atol=1e-6)
+        assert coil_only.model_set.scales.flat_wb_per_ka != 0.0 and pred.psirz.shape == (shot.n_frames, 65, 65)
+        # Scalars are the ridge_signed scalars of baseline_v0, exactly.
+        base = baseline.predict_shot(shot, "DIII-D")
+        assert np.array_equal(pred.q95, base.q95) and np.array_equal(pred.betaN, base.betaN)
+        assert not np.allclose(pred.psirz, base.psirz)
+    # A flipped current flips the stored map.
+    shot = sub.strip_labels(io.load_shot(env["root"] / "diii_d_public_test" / "d3d_shot_b2.parquet"))
+    flipped = sub.strip_labels(io.load_shot(env["root"] / "diii_d_public_test" / "d3d_shot_b2.parquet"))
+    for col in DIII_D.current_columns:
+        flipped.data[col] = -flipped[col]
+    assert np.allclose(coil_only.predict_shot(flipped, "DIII-D").psirz, coil_only.predict_shot(shot, "DIII-D").psirz, atol=1e-6)
+    # MAST is identical to baseline_v0.
+    m_shot = sub.strip_labels(io.load_shot(env["root"] / "mast_public_test" / "mast_shot_m1.parquet"))
+    assert np.array_equal(coil_only.predict_shot(m_shot, "MAST").psirz, baseline.predict_shot(m_shot, "MAST").psirz)
+
+
 def test_script_build_validate_score_and_pointer_keep_the_token_in_the_zip(environment, tmp_path, monkeypatch):
     env = environment
     script = load_script()
