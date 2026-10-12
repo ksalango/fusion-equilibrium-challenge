@@ -6,7 +6,8 @@ Selects the shot files per split, builds each shot's rows in worker processes wi
 - ``<split>.parquet`` for each split: the frame rows, shots in sorted id order, about
   ``--shots-per-group`` shots per Parquet row group.
 - ``shot_index.parquet``: one row per shot with split, machine, frame count, the
-  shot-level flags and ``error`` (None, or why the shot produced no rows).
+  shot-level flags, ``ip_rise_ms``, ``sol_at_rise`` and ``error`` (None, or why the shot
+  produced no rows).
 - ``build.json``: repository and starter-kit commits, timestamp, arguments, runtime.
 
 Shots are processed in sorted order and written in that order, so the output does
@@ -16,6 +17,7 @@ Nothing is written under the data root. Usage::
     python scripts/build_frame_table.py --shots-file reports/frame_table/smoke_shots.json \\
         --out ../data/processed/frame_table_smoke
     python scripts/build_frame_table.py                      # full run
+    python scripts/build_frame_table.py --rate-window-ms 10 50   # slope windows (the default)
 """
 
 from __future__ import annotations
@@ -34,8 +36,8 @@ import pyarrow.parquet as pq
 from fusion_eq import starter_kit
 from fusion_eq.dataset import (DATA_SPLITS, LABELLED_SPLITS, default_data_root, filter_shots, list_shots,
                                read_shots_file, run_info, select_shots)
-from fusion_eq.frame_table import (DEFAULT_TABLE_ROOT, BuildParams, arrow_schema, build_one, shot_index_frame,
-                                   table_schema, to_arrow)
+from fusion_eq.frame_table import (DEFAULT_RATE_WINDOWS_MS, DEFAULT_TABLE_ROOT, BuildParams, arrow_schema, build_one,
+                                   shot_index_frame, table_schema, to_arrow)
 
 DEFAULT_SHOTS_PER_GROUP = 200
 
@@ -58,14 +60,15 @@ def _work(job: tuple[str, Path, BuildParams]):
     return build_one(path, split, params)
 
 
-def write_split(split: str, results, out_dir: Path, shots_per_group: int) -> int:
+def write_split(split: str, results, out_dir: Path, shots_per_group: int,
+                rate_windows_ms=DEFAULT_RATE_WINDOWS_MS) -> int:
     """Writes one split's rows as they arrive in order; returns the number of rows written."""
     writer, buffer, buffered, written, schema = None, [], 0, 0, None
     for frames in results:
         if frames is None:
             continue
         if schema is None:
-            schema = table_schema(frames["machine"].iloc[0], split in LABELLED_SPLITS)
+            schema = table_schema(frames["machine"].iloc[0], split in LABELLED_SPLITS, rate_windows_ms)
             writer = pq.ParquetWriter(out_dir / f"{split}.parquet", arrow_schema(schema))
         buffer.append(frames)
         buffered += 1
@@ -97,7 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None,
                         help=f"output directory (default {DEFAULT_TABLE_ROOT})")
     parser.add_argument("--window-ms", type=float, default=2.0)
-    parser.add_argument("--rate-window-ms", type=float, default=10.0)
+    parser.add_argument("--rate-window-ms", type=float, nargs="+", default=list(DEFAULT_RATE_WINDOWS_MS),
+                        help="slope windows in ms: the first gives __rate, each further one __rate<ms>")
     parser.add_argument("--max-gap-ms", type=float, default=5.0)
     parser.add_argument("--thomson-tol-ms", type=float, default=20.0)
     parser.add_argument("--no-align-ip", action="store_true", help="keep the organizers' Ip axis (requires --out)")
@@ -139,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"  {split}: {done}/{len(split_jobs)} shots, {elapsed:.0f} s elapsed", flush=True)
                     yield frames
 
-            rows_per_split[split] = write_split(split, ordered(), args.out, args.shots_per_group)
+            rows_per_split[split] = write_split(split, ordered(), args.out, args.shots_per_group, params.rate_window_ms)
 
     index = shot_index_frame(index_rows)
     index.to_parquet(args.out / "shot_index.parquet", index=False)

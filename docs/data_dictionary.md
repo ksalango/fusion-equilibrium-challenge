@@ -361,8 +361,11 @@ Storage is float32 unless stated. Shaping-coil columns carry their own names: 18
 `magnetics_efps_current` on MAST, each with the three suffixes of the shared currents. The
 table below lists the DIII-D training table with the shaping coils collapsed to one row.
 
-Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` 10.0, `max_gap_ms` 5.0,
-`thomson_tol_ms` 20.0, Ip alignment on, flux-map summaries on. `build.json` records them.
+Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` [10.0, 50.0], `max_gap_ms` 5.0,
+`thomson_tol_ms` 20.0, Ip alignment on, flux-map summaries on. `build.json` records them. The first
+rate window gives the `__rate` columns of every current; each further window `w` gives `__rate<w>`
+columns for Ip, the solenoid and the shaping coils only (Part 0 of `docs/FEATURES.md`; builds before
+it have `rate_window_ms` 10.0 and no `__rate50`, `ip_rise_ms` or `sol_at_rise`).
 
 | Column | Role | Type | Units | Computation |
 | --- | --- | --- | --- | --- |
@@ -376,17 +379,22 @@ Build parameters (defaults): `window_ms` 2.0, `rate_window_ms` 10.0, `max_gap_ms
 | `ip__nearest` | input | float32 | kA | Nearest valid sample of magnetics_plasma_current; NaN beyond max_gap_ms |
 | `ip__mean` | input | float32 | kA | Mean of magnetics_plasma_current over the centred window_ms; interpolated when empty |
 | `ip__rate` | input | float32 | kA/s | Least-squares slope of magnetics_plasma_current over the centred rate_window_ms |
+| `ip__rate50` | input | float32 | kA/s | Least-squares slope of magnetics_plasma_current over a centred 50 ms window |
 | `sol__nearest` | input | float32 | kA | Nearest valid sample of magnetics_ECOILA; NaN beyond max_gap_ms |
 | `sol__mean` | input | float32 | kA | Mean of magnetics_ECOILA over the centred window_ms; interpolated when empty |
 | `sol__rate` | input | float32 | kA/s | Least-squares slope of magnetics_ECOILA over the centred rate_window_ms |
+| `sol__rate50` | input | float32 | kA/s | Least-squares slope of magnetics_ECOILA over a centred 50 ms window |
 | `tf__nearest` | input | float32 | kA | Nearest valid sample of magnetics_bcoil; NaN beyond max_gap_ms |
 | `tf__mean` | input | float32 | kA | Mean of magnetics_bcoil over the centred window_ms; interpolated when empty |
 | `tf__rate` | input | float32 | kA/s | Least-squares slope of magnetics_bcoil over the centred rate_window_ms |
 | `<shaping coil>__nearest` | input | float32 | kA-turn | Nearest valid sample; NaN beyond max_gap_ms, one column per shaping coil |
 | `<shaping coil>__mean` | input | float32 | kA-turn | Mean over the centred window_ms; interpolated when the window is empty, one column per shaping coil |
 | `<shaping coil>__rate` | input | float32 | kA-turn/s | Least-squares slope over the centred rate_window_ms, one column per shaping coil |
+| `<shaping coil>__rate50` | input | float32 | kA-turn/s | Least-squares slope over a centred 50 ms window, one column per shaping coil |
 | `magnetics_efps_current__nearest`, `__mean`, `__rate` (MAST only) | input | float32 | kA, kA, kA/s | Same three forms as the shared currents |
 | `magnetics_p3l_current__*`, `magnetics_p3u_current__*` (MAST only) | input | float32 | kA-turn | Shaping coils as above; the P3 coils carry almost no current during the plasma (F30, see the notes) |
+| `ip_rise_ms` | input | float64 | ms | Time of the Ip rise, one value per shot: the 10 percent crossing (see the notes), not the first departure from zero |
+| `sol_at_rise` | input | float32 | kA | Solenoid current at `ip_rise_ms`, mean over the centred window_ms; one value per shot |
 | `ts_core_te_peak__interp` | input | float32 | eV | core te peak, linear interpolation between valid slices |
 | `ts_core_te_peak__nearest` | input | float32 | eV | core te peak, nearest valid slice |
 | `ts_core_ne_peak__interp` | input | float32 | m^-3 | core ne peak, linear interpolation between valid slices |
@@ -462,5 +470,67 @@ Notes.
   float64 sources without change). `psi_min/max/mean` are per-frame statistics of `efit_psirz`.
   Flux maps are not stored; `read_flux_maps` reads them from the raw files. `magnetics_dsep` is
   excluded. `efit_lcfs_r/z` are not stored.
+- `ip_rise_ms` is the 10 percent crossing of `fusion_eq.ip_alignment.breakdown_time_ms`: the first
+  sample, in time order, where abs(Ip) exceeds 10 percent of the shot's 99.5th percentile of abs(Ip),
+  on the Ip axis as loaded (after the organizers' fix and the project's alignment). It is the rule the
+  alignment uses, so on the DIII-D shots that rule B moved it is about 14.9 ms by construction. It is
+  not the first departure of Ip from zero, which comes earlier by the time Ip takes to reach a tenth
+  of its flat-top value. Samples whose time or current is NaN are skipped, which covers the MAST shots
+  with merged clocks (F20). It depends on the whole shot through the percentile. NaN when no sample
+  crosses. `sol_at_rise` is NaN when `ip_rise_ms` is.
+- The `__rate50` slopes are kept beside `__rate` because the 10 ms slope is as wide as a ramp on
+  flat-top (F32). The toroidal field has no `__rate50`: its current is constant within a shot.
 - `shot_index.parquet` holds one row per shot: split, machine, shot, path, n_frames, the shot-level
-  flags, `ts_core_any_valid`, `ts_edge_any_valid`, `inputs_complete_frac` and `error`.
+  flags, `ts_core_any_valid`, `ts_edge_any_valid`, `inputs_complete_frac`, `ip_rise_ms`, `sol_at_rise`
+  and `error`.
+
+## 8. Features
+
+Version 1, built by `scripts/build_features.py --config configs/features_v1.yaml` from the frame
+table (`fusion_eq.features`, specification in `docs/FEATURES.md`). One Parquet file per split under
+`../data/processed/features/v1/`, keyed on `shot` and `frame` (the frame table's rows and order),
+float32, unscaled and without units. The robust scaler (median and interquartile range of the DIII-D
+`train` list, originals and mirrors together) is in `reports/features/v1/scaler.json`;
+`feature_matrix` applies it. Every feature reads only `input_columns(machine, include_flags=True)` and
+the key `time_ms` (check X2).
+
+Constants (`fusion_eq.machines`; `verified` in `build.json`): R0 1.67 m and a0 0.67 m on DIII-D,
+0.85 m and 0.65 m on MAST, all to be confirmed from published specifications; toroidal-field turns 144
+on DIII-D (confirmed, F74) and 24 on MAST (not verified). Normalized coordinates x = (R - R0) / a0,
+y = Z / a0. Units in the formulas: currents in A, pressure in Pa, lengths in m, times in s, Te in keV.
+Frames with abs(Ip) under `min_abs_ip_ka` (20 kA) give NaN in every feature divided by Ip; frames
+without valid core Thomson give NaN in the Thomson features.
+
+| Column | Group | Mirror | Scale | Uses later samples | Computation |
+| --- | --- | --- | --- | --- | --- |
+| `coil_pt_00` to `coil_pt_21` | coil pattern | permute | robust, shared group `coil_pattern` | no | (psi_coil(P_i) - psi_coil(P_ref)) / (mu0 R0 Ip), Ip signed; psi_coil from the point table under the adopted coil model; P_i the 22 layout points of the configuration, P_ref = (R0, 0). NaN when a coil current is missing |
+| `coil_c10`, `coil_c20`, `coil_c02`, `coil_c30`, `coil_c12` | coil terms | even | robust | no | Least-squares coefficients of x^m y^n in an order 1 to 3 polynomial fitted to the coil points, one fixed matrix on both machines |
+| `coil_c01`, `coil_c11`, `coil_c21`, `coil_c03` | coil terms | odd | robust | no | As above; odd in y, so they change sign under the mirror |
+| `ts_beta_p` | plasma content | even | robust | yes (interpolation) | 8 pi^2 a0^2 p_e / (mu0 Ip^2), p_e = `ts_core_pe_mean__interp` |
+| `ts_pe_peaking` | plasma content | even | robust | yes (interpolation) | `ts_core_pe_peak__interp` / `ts_core_pe_mean__interp` |
+| `ts_valid` | plasma content | even | none | yes (nearest slice) | `ts_core_valid` as 0 or 1 |
+| `q_cyl` | field against current | even | robust | no | a0^2 N_tf abs(I_tf) / (R0^2 abs(Ip)) |
+| `ip_frac` | shot position | even | robust | yes (whole shot) | `ip_over_peak` |
+| `ip_rate_rel` | shot position | even | robust | yes (50 ms slope) | (`ip__rate50` / `ip__mean`) tau_R |
+| `resistive_age` | shot position | even | robust | yes (`ip_rise_ms`) | Integral of dt / tau_R from `ip_rise_ms` to the frame, trapezoid over the shot's frames from (first frame time - `ip_rise_ms`) / tau_R |
+| `shafranov_lambda` | candidate | even | robust | no | -4 pi (R0 / a0) `coil_c10` - ln(8 R0 / a0) + 1.5 |
+| `ohmic_flux_used` | candidate | even | robust | yes (`sol_at_rise`) | Solenoid flux at P_ref from (`sol__mean` - `sol_at_rise`) under the solenoid model, over mu0 R0 Ip |
+| `greenwald_frac` | candidate | even | robust | yes (interpolation) | n_e pi a0^2 / abs(Ip), n_e = `ts_core_ne_peak__interp` in 1e20 m^-3, Ip in MA |
+
+Notes.
+
+- tau_R = 7.8 a0^2 Te^1.5 s with Te = `ts_core_te_peak__interp` in keV (Spitzer estimate, Coulomb
+  logarithm 17, effective charge 1). On a frame without valid Thomson the shot's median Te over its
+  valid frames is used; a shot with no valid frame gives NaN in `ip_rate_rel` and `resistive_age`.
+- Uses later samples: the frame table's centred 2 ms mean of the currents (1 ms ahead) is not counted,
+  since every current enters that way. Counted: Thomson interpolation to the next slice, the centred
+  50 ms slope, and quantities taken over the whole shot.
+- Layout: the 5 by 5 lattice x in {-0.75, -0.375, 0, 0.375, 0.75}, y in {-1.5, -0.75, 0, 0.75, 1.5}
+  without (0, 0), (0.375, +-1.5) and (0.75, +-1.5), plus (0.375, +-1.125). Every point is inside the
+  grid and at least 0.15 m from every coil element on both machines (smallest clearance 0.279 m on
+  DIII-D, 0.199 m on MAST); `reports/features/v1/layout_clearance.csv` lists each point.
+- Point tables: `points_<machine>_<key>.npz` beside the grid tables, built with the grid tables' code
+  and filament count from the geometry columns of the first public test shot of each machine, whose
+  hash must equal the grid table's.
+- Mirror: the up-down mirror of a frame exchanges each coil point with its partner (x, -y), changes the
+  sign of the odd terms and leaves every other feature unchanged. No coil current is swapped.

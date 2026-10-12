@@ -109,3 +109,26 @@ def test_alignment_skipped_without_breakdown(tmp_path, starter):
     path = write_shot(tmp_path / "d3d_shot_flat.parquet", d)
     shot = io.load_shot(path, IP_LOAD)
     assert shot.fixes["ip_alignment_applied"] is False and "ip_alignment_error" in shot.fixes
+
+
+def test_breakdown_skips_nan_and_orders_merged_clock_axes():
+    # MAST shots with merged clocks (F20): one sample in six is NaN on Ip, and an axis
+    # assembled from two clocks need not be in time order.
+    t = -100.0 + 0.5 * np.arange(1200)
+    ip = np.where(t > 37.0, 800.0, 1.5)
+    clean = ip_alignment.breakdown_time_ms(t, ip)
+    holed = ip.copy()
+    holed[::6] = np.nan
+    assert ip_alignment.breakdown_time_ms(t, holed) == clean == 37.5
+    # A NaN time stamp is skipped together with its sample, even when its current is high.
+    t_nan = t.copy()
+    t_nan[0] = np.nan
+    spiked = holed.copy()
+    spiked[0] = 900.0
+    assert ip_alignment.breakdown_time_ms(t_nan, spiked) == clean
+    # Two interleaved clocks stored one after the other give the same crossing.
+    order = np.concatenate([np.arange(0, t.size, 2), np.arange(1, t.size, 2)])
+    assert ip_alignment.breakdown_time_ms(t[order], holed[order]) == clean
+    assert np.isnan(ip_alignment.breakdown_time_ms(t, np.full_like(t, np.nan)))
+    with pytest.raises(ValueError):
+        ip_alignment.breakdown_time_ms(t, ip[:-1])

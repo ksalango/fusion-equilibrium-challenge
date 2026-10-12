@@ -8,12 +8,32 @@ documented in ``docs/data_dictionary.md``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 # The plasma current column carries the same name on both machines.
 IP_COLUMN = "magnetics_plasma_current"
 MAGNETICS_TIME_COLUMN = "magnetics_time"
 IP_TIME_COLUMN = "magnetics_plasma_current_times"
+
+
+@dataclass(frozen=True)
+class MachineConstant:
+    """A physical constant of one machine with its provenance.
+
+    Attributes:
+        value: The value in ``units``.
+        units: Physical units.
+        source: Where the value comes from.
+        verified: True once the value is confirmed against a published source or the data.
+    """
+
+    value: float
+    units: str
+    source: str
+    verified: bool
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -60,8 +80,12 @@ class MachineConfig:
         solenoid_turns: Turn convention of the solenoid column, ``"shared"`` or
             ``"per_element"`` (see ``CoilConvention``). Shaping coils are always
             ``"shared"``: their columns hold total ampere-turns.
-        reference_radius_m: Published major radius of the machine at Z = 0, in metres,
-            the provisional reference point of the coil-flux checks.
+        major_radius: Reference major radius R0 in metres: the reference point (R0, 0) of
+            the coil-flux checks and the origin of the normalized coordinates of the
+            features, ``x = (R - R0) / a0``.
+        minor_radius: Reference minor radius a0 in metres, the length scale of the
+            normalized coordinates, ``y = Z / a0``.
+        tf_turns: Turns of the toroidal-field coil set, giving ``Bt = mu0 N I_tf / (2 pi R)``.
     """
 
     name: str
@@ -76,7 +100,19 @@ class MachineConfig:
     lcfs_padding: str
     mask_file: str
     solenoid_turns: str
-    reference_radius_m: float
+    major_radius: MachineConstant
+    minor_radius: MachineConstant
+    tf_turns: MachineConstant
+
+    @property
+    def reference_radius_m(self) -> float:
+        """Reference major radius R0 in metres (``major_radius``)."""
+        return self.major_radius.value
+
+    def constants_record(self) -> dict:
+        """The machine constants with their sources and verified status, for build records."""
+        return {"major_radius": self.major_radius.to_dict(), "minor_radius": self.minor_radius.to_dict(),
+                "tf_turns": self.tf_turns.to_dict()}
 
     def coil_convention(self, current_column: str) -> CoilConvention:
         """Turn convention of a current column that has coil geometry.
@@ -129,7 +165,10 @@ DIII_D = MachineConfig(
     # ambiguous (48 single-turn elements in EFIT). Its scale is the quantity the coil-flux
     # phase fits, so the convention here only fixes what "scale 1" means.
     solenoid_turns="per_element",
-    reference_radius_m=1.67,
+    major_radius=MachineConstant(1.67, "m", "Published major radius at Z = 0, from recall; to be confirmed", False),
+    minor_radius=MachineConstant(0.67, "m", "Published minor radius, from recall; to be confirmed", False),
+    tf_turns=MachineConstant(144.0, "turns", "Confirmed from the data: q95 calculated from the map against the "
+                             "label, median ratio 0.997 (F74)", True),
 )
 
 MAST = MachineConfig(
@@ -146,7 +185,9 @@ MAST = MachineConfig(
     mask_file="mast_envelope.npz",
     # 656 single-turn elements sharing one column in kA: every element carries the value.
     solenoid_turns="per_element",
-    reference_radius_m=0.85,
+    major_radius=MachineConstant(0.85, "m", "Published major radius at Z = 0, from recall; to be confirmed", False),
+    minor_radius=MachineConstant(0.65, "m", "Published minor radius, from recall; to be confirmed", False),
+    tf_turns=MachineConstant(24.0, "turns", "From recall, not verified", False),
 )
 
 MACHINES: dict[str, MachineConfig] = {m.name: m for m in (DIII_D, MAST)}

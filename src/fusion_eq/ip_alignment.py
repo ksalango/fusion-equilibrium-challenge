@@ -54,12 +54,20 @@ def breakdown_time_ms(times_ms, ip_ka, fraction: float = BREAKDOWN_FRACTION) -> 
     Returns:
         Time in ms of the first sample where |Ip| exceeds the threshold, or NaN when no
         sample does (the organizers' helper would return the first time stamp there).
+        Samples whose time or current is not finite are skipped and the rest are taken in
+        time order, as the resampling does: the MAST shots with merged clocks hold NaN on
+        one sample in six (F20). On a sorted axis without NaN this is the organizers' rule.
     """
-    t = np.asarray(times_ms, dtype=np.float64)
-    ip = np.abs(np.asarray(ip_ka, dtype=np.float64))
-    if t.size == 0 or not np.isfinite(ip).any():
+    t = np.asarray(times_ms, dtype=np.float64).ravel()
+    ip = np.abs(np.asarray(ip_ka, dtype=np.float64)).ravel()
+    if t.shape != ip.shape:
+        raise ValueError(f"times and currents differ in length: {t.size} versus {ip.size}")
+    keep = np.isfinite(t) & np.isfinite(ip)
+    if not keep.any():
         return np.nan
-    threshold = fraction * np.nanpercentile(ip, 99.5)
+    order = np.argsort(t[keep], kind="stable")
+    t, ip = t[keep][order], ip[keep][order]
+    threshold = fraction * np.percentile(ip, 99.5)
     above = ip > threshold
     if not above.any():
         return np.nan

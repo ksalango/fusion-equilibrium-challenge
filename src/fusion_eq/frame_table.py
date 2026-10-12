@@ -3,9 +3,10 @@
 The table is the single starting point of every later analysis and model. Shots are
 read with ``fusion_eq.io.load_shot`` (organizers' fixes plus the project's Ip
 alignment), currents are resampled onto ``efit_times`` in three forms (nearest valid
-sample, windowed mean, windowed slope), Thomson summaries are brought to frame times
-in two forms (interpolated, nearest), and shot-level flags are attached. Labels are
-copied as stored, never interpolated, and only into the training table.
+sample, windowed mean, windowed slope; a second, longer slope for Ip, the solenoid and
+the shaping coils), Thomson summaries are brought to frame times in two forms
+(interpolated, nearest), and shot-level flags and the time of the Ip rise are attached.
+Labels are copied as stored, never interpolated, and only into the training table.
 
 The column schema gives every column a role: ``key``, ``input``, ``flag`` or
 ``label``. ``input_columns`` and ``assert_input_columns`` are the guard against a
@@ -23,11 +24,16 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from fusion_eq import dataset, io, resample, thomson
+from fusion_eq import dataset, io, ip_alignment, resample, thomson
 from fusion_eq.machines import MachineConfig, machine_config
 
 ROLES = ("key", "input", "flag", "label")
 RESAMPLE_SUFFIXES = ("__nearest", "__mean", "__rate")
+RATE_SUFFIX = "__rate"
+# Slope windows in ms. The first gives the ``__rate`` columns of every current; each
+# further window gives ``__rate<ms>`` columns for Ip, the solenoid and the shaping coils
+# (F32: the 10 ms slope is too noisy on flat-top; the toroidal field is constant in a shot).
+DEFAULT_RATE_WINDOWS_MS = (10.0, 50.0)
 THOMSON_SUFFIXES = ("__interp", "__nearest")
 
 # Columns copied from the shot file into the training table without any change.
@@ -54,7 +60,9 @@ class BuildParams:
 
     Attributes:
         window_ms: Full length of the centred window of the ``__mean`` columns.
-        rate_window_ms: Full length of the centred window of the ``__rate`` columns.
+        rate_window_ms: Full lengths of the centred slope windows, in ms. The first gives
+            the ``__rate`` columns; each further one the ``__rate<ms>`` columns of
+            ``long_rate_signals`` (``rate_columns``). A single number is read as one window.
         max_gap_ms: Largest distance to the nearest valid sample for ``__nearest``, and
             largest gap interpolated over when a mean window is empty.
         thomson_tol_ms: Distance to the nearest valid Thomson slice under which a frame
@@ -65,14 +73,24 @@ class BuildParams:
     """
 
     window_ms: float = 2.0
-    rate_window_ms: float = 10.0
+    rate_window_ms: tuple[float, ...] = DEFAULT_RATE_WINDOWS_MS
     max_gap_ms: float = 5.0
     thomson_tol_ms: float = 20.0
     align_ip: bool = True
     psi_summary: bool = True
 
+    def __post_init__(self) -> None:
+        windows = self.rate_window_ms
+        windows = (float(windows),) if np.ndim(windows) == 0 else tuple(float(w) for w in windows)
+        if not windows or any(not w > 0 for w in windows):
+            raise ValueError(f"rate windows must be positive, got {self.rate_window_ms!r}")
+        rate_suffixes(windows)
+        object.__setattr__(self, "rate_window_ms", windows)
+
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["rate_window_ms"] = list(self.rate_window_ms)
+        return d
 
 
 @dataclass(frozen=True)
@@ -111,14 +129,42 @@ def _current_units(cfg: MachineConfig, column: str) -> str:
     return "kA-turn" if column in cfg.shaping_coil_columns else "kA"
 
 
-def table_schema(machine: str | MachineConfig, with_labels: bool) -> list[Column]:
+def long_rate_signals(cfg: MachineConfig) -> list[str]:
+    """Signals that carry the slopes of the further rate windows: Ip, solenoid, shaping coils."""
+    return ["ip", "sol", *cfg.shaping_coil_columns]
+
+
+def rate_suffixes(rate_windows_ms=DEFAULT_RATE_WINDOWS_MS) -> list[tuple[str, float]]:
+    """``(suffix, window_ms)`` of every slope column: ``__rate`` for the first window,
+    ``__rate<ms>`` for each further one.
+
+    Raises:
+        ValueError: when a further window is not a whole number of ms or repeats a name.
+    """
+    windows = [float(w) for w in np.atleast_1d(rate_windows_ms)]
+    out = [(RATE_SUFFIX, windows[0])]
+    for w in windows[1:]:
+        if w != round(w):
+            raise ValueError(f"further rate windows must be whole ms, got {w}")
+        out.append((f"{RATE_SUFFIX}{int(round(w))}", w))
+    names = [name for name, _ in out]
+    if len(set(names)) != len(names):
+        raise ValueError(f"rate windows give repeated column names: {names}")
+    return out
+
+
+def table_schema(machine: str | MachineConfig, with_labels: bool,
+                 rate_windows_ms=DEFAULT_RATE_WINDOWS_MS) -> list[Column]:
     """Ordered column schema of one split's table.
 
     Args:
         machine: Machine name or configuration.
         with_labels: Whether the label columns are included (training table only).
+        rate_windows_ms: Slope windows of the build (``BuildParams.rate_window_ms``).
     """
     cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
+    long_signals = set(long_rate_signals(cfg))
+    further_rates = rate_suffixes(rate_windows_ms)[1:]
     cols = [
         Column("machine", "key", "string", "", "Machine name"),
         Column("split", "key", "string", "", "Dataset split"),
@@ -138,6 +184,17 @@ def table_schema(machine: str | MachineConfig, with_labels: bool) -> list[Column
             Column(f"{name}__rate", "input", "float32", f"{units}/s",
                    f"Least-squares slope of {column} over the centred rate_window_ms"),
         ]
+        if name in long_signals:
+            cols += [Column(f"{name}{suffix}", "input", "float32", f"{units}/s",
+                            f"Least-squares slope of {column} over a centred {window:g} ms window")
+                     for suffix, window in further_rates]
+    cols += [
+        Column("ip_rise_ms", "input", "float64", "ms",
+               "Time of the Ip rise: first sample where abs(Ip) exceeds 10 percent of the shot's 99.5th "
+               "percentile of abs(Ip) (ip_alignment.breakdown_time_ms), on the final Ip axis; one value per shot"),
+        Column("sol_at_rise", "input", "float32", "kA",
+               "Solenoid current at ip_rise_ms, mean over the centred window_ms; one value per shot"),
+    ]
     for system in thomson.SYSTEMS:
         prefix = f"ts_{system}_"
         for summary in thomson.SUMMARY_NAMES[system]:
@@ -322,16 +379,44 @@ def columns_to_load(cfg: MachineConfig, with_labels: bool, psi_summary: bool) ->
 def _resampled_currents(shot: io.Shot, efit: np.ndarray, params: BuildParams) -> dict[str, np.ndarray]:
     out: dict[str, np.ndarray] = {}
     nan = np.full(efit.shape, np.nan)
+    rates = rate_suffixes(params.rate_window_ms)
+    long_signals = set(long_rate_signals(shot.machine))
     for name, column in current_signals(shot.machine).items():
+        signal_rates = rates if name in long_signals else rates[:1]
         if column not in shot:
-            out[f"{name}__nearest"], out[f"{name}__mean"], out[f"{name}__rate"] = nan, nan, nan
+            out[f"{name}__nearest"], out[f"{name}__mean"] = nan, nan
+            for suffix, _ in signal_rates:
+                out[f"{name}{suffix}"] = nan
             continue
         axis = shot[shot.machine.time_axis_column(column)]
         values = shot[column]
         out[f"{name}__nearest"] = resample.nearest_valid(axis, values, efit, params.max_gap_ms)
         out[f"{name}__mean"] = resample.window_mean(axis, values, efit, params.window_ms, params.max_gap_ms)
-        out[f"{name}__rate"] = resample.window_slope(axis, values, efit, params.rate_window_ms)
+        for suffix, window in signal_rates:
+            out[f"{name}{suffix}"] = resample.window_slope(axis, values, efit, window)
     return out
+
+
+def ip_rise(shot: io.Shot, params: BuildParams) -> dict[str, float]:
+    """Time of the Ip rise and the solenoid current at that time, for one loaded shot.
+
+    The rise is the 10 percent crossing of ``ip_alignment.breakdown_time_ms`` on the Ip
+    axis as loaded (after the organizers' fix and the project's alignment), not the first
+    departure from zero. The solenoid current is its mean over the centred ``window_ms``.
+
+    Returns:
+        ``ip_rise_ms`` (NaN when no crossing is found) and ``sol_at_rise`` in kA (NaN
+        without a rise or a solenoid column).
+    """
+    cfg = shot.machine
+    rise = np.nan
+    if cfg.ip_column in shot:
+        rise = ip_alignment.breakdown_time_ms(shot[cfg.time_axis_column(cfg.ip_column)], shot[cfg.ip_column])
+    sol = np.nan
+    if np.isfinite(rise) and cfg.solenoid_column in shot:
+        sol = float(resample.window_mean(shot[cfg.time_axis_column(cfg.solenoid_column)], shot[cfg.solenoid_column],
+                                         np.array([rise]), params.window_ms, params.max_gap_ms)[0])
+    return {"ip_rise_ms": float(rise), "sol_at_rise": sol}
 
 
 def _thomson_columns(shot: io.Shot, efit: np.ndarray, params: BuildParams) -> dict[str, np.ndarray]:
@@ -407,6 +492,8 @@ def build_shot_frames(shot: io.Shot, split: str, params: BuildParams, with_label
         "dt_prev_ms": np.concatenate([[np.nan], np.diff(efit)]),
     }
     data.update(_resampled_currents(shot, efit, params))
+    for key, value in ip_rise(shot, params).items():
+        data[key] = np.full(n, value)
     ts = _thomson_columns(shot, efit, params)
     data.update(ts)
 
@@ -426,7 +513,7 @@ def build_shot_frames(shot: io.Shot, split: str, params: BuildParams, with_label
     if with_labels:
         data.update(_label_columns(shot, n, params.psi_summary))
 
-    schema = table_schema(cfg, with_labels)
+    schema = table_schema(cfg, with_labels, params.rate_window_ms)
     frame = pd.DataFrame({c.name: data[c.name] for c in schema})
     return cast_to_schema(frame, schema)
 
@@ -451,7 +538,7 @@ def to_arrow(frame: pd.DataFrame, schema: list[Column]) -> pa.Table:
 
 INDEX_COLUMNS = ("split", "machine", "shot", "path", "n_frames", "mag_rate_hz", "mag_has_nan",
                  "ip_direction", "tf_direction", "ip_fix", "ip_shift_ms", "ts_core_any_valid",
-                 "ts_edge_any_valid", "inputs_complete_frac", "error")
+                 "ts_edge_any_valid", "inputs_complete_frac", "ip_rise_ms", "sol_at_rise", "error")
 
 
 def build_one(path: Path | str, split: str, params: BuildParams) -> tuple[pd.DataFrame | None, dict]:
@@ -484,6 +571,7 @@ def build_one(path: Path | str, split: str, params: BuildParams) -> tuple[pd.Dat
         ts_core_any_valid=bool(frames["ts_core_valid"].any()),
         ts_edge_any_valid=bool(frames["ts_edge_valid"].any()),
         inputs_complete_frac=float(frames["inputs_complete"].mean()),
+        ip_rise_ms=float(first["ip_rise_ms"]), sol_at_rise=float(first["sol_at_rise"]),
     )
     return frames, row
 
@@ -497,7 +585,7 @@ def shot_index_frame(rows: list[dict]) -> pd.DataFrame:
         df[col] = df[col].astype("Int64")
     for col in ("mag_has_nan", "ts_core_any_valid", "ts_edge_any_valid"):
         df[col] = df[col].astype("boolean")
-    for col in ("ip_shift_ms", "inputs_complete_frac"):
+    for col in ("ip_shift_ms", "inputs_complete_frac", "ip_rise_ms", "sol_at_rise"):
         df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
     return df.sort_values(["split", "shot"], kind="stable").reset_index(drop=True)
 

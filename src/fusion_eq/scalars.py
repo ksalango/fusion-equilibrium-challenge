@@ -20,9 +20,10 @@ Bt are used, q95 and betaN being stored positive):
              (1.17 - 0.65 eps) / (1 - eps^2)^2             delta = (tri_top + tri_bot) / 2
     betaN  = 100 (2 mu0 p / Bt^2) a Bt / Ip
 
-The toroidal-field turn count is a per-machine parameter. The DIII-D value of 144 is
-provisional, to verify against a published source; section 2 of notebook 05 fits the
-multiplier the labels imply and the turn count it corresponds to.
+The toroidal-field turn count is a per-machine constant held in ``machines.py``
+(``tf_turns``); only verified counts enter ``TF_TURNS``. The DIII-D value of 144 is confirmed
+from the data (F74); section 2 of notebook 05 fits the multiplier the labels imply and the
+turn count it corresponds to.
 """
 
 from __future__ import annotations
@@ -35,15 +36,16 @@ import numpy as np
 import pandas as pd
 
 from fusion_eq import baseline as bl, starter_kit
-from fusion_eq.machines import MachineConfig, machine_config
+from fusion_eq.machines import MACHINES, MachineConfig, machine_config
 
 MU0 = 4e-7 * np.pi
 A_PER_KA = 1000.0
 MA_PER_KA = 1e-3
 PA_PER_KPA = 1000.0
-# Toroidal field coil turns per machine. DIII-D: 144, provisional, to verify against a
-# published source. MAST: unknown, left out on purpose until a source is found.
-TF_TURNS = {"DIII-D": 144}
+# Toroidal field coil turns of the machines whose count is verified (``machines.py``
+# ``tf_turns``). An unverified count is left out on purpose, so that a formula on that
+# machine fails instead of using it.
+TF_TURNS = {name: int(cfg.tf_turns.value) for name, cfg in MACHINES.items() if cfg.tf_turns.verified}
 SHAPE_COLUMNS = ("R_geo", "a", "kappa", "tri_top", "tri_bot", "eps")
 # Inputs of the correction model: quantities without units only.
 CORRECTION_FEATURES = ("kappa", "tri_top", "tri_bot", "eps", "peak_to_mean", "ip_over_peak")

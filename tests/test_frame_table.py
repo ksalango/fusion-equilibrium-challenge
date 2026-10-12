@@ -13,7 +13,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from fusion_eq import dataset, frame_table as ft, io, profile
+from fusion_eq import dataset, frame_table as ft, io, ip_alignment, profile
 from fusion_eq.machines import DIII_D, MAST
 from tests.conftest import D3D_MAGNETICS_ORIGIN_MS, drop_labels, make_d3d_shot, make_mast_shot, write_shot
 
@@ -282,3 +282,66 @@ def test_build_script_records_a_failing_shot_and_align_flag(data_root, tmp_path,
     train = ft.read_frame_table("diii_d_train", ["shot", "psi_min", "ip_fix"], root=out)
     assert train["psi_min"].isna().all() and set(train["shot"]) == {"a1", "a2", "a3"}
     assert set(train["ip_fix"]) == {"organizers", "none"}
+
+
+# --------------------------------------------------------------- Part 0: rates and Ip rise
+def test_rate_windows_name_the_slope_columns():
+    assert ft.rate_suffixes((10.0, 50.0)) == [("__rate", 10.0), ("__rate50", 50.0)]
+    assert ft.BuildParams().rate_window_ms == (10.0, 50.0)
+    assert ft.BuildParams(rate_window_ms=10.0).rate_window_ms == (10.0,)          # one number, one window
+    assert ft.BuildParams(rate_window_ms=[10, 50]).to_dict()["rate_window_ms"] == [10.0, 50.0]
+    for bad in ((10.0, 12.5), (10.0, 50.0, 50.0), (0.0,), ()):
+        with pytest.raises(ValueError):
+            ft.BuildParams(rate_window_ms=bad)
+
+
+@pytest.mark.parametrize("cfg", [DIII_D, MAST])
+def test_schema_has_long_rates_for_ip_solenoid_and_shaping_coils_only(cfg):
+    names = [c.name for c in ft.table_schema(cfg, with_labels=False)]
+    expected = {"ip__rate50", "sol__rate50", *(f"{c}__rate50" for c in cfg.shaping_coil_columns)}
+    assert {n for n in names if n.endswith("__rate50")} == expected
+    assert "tf__rate50" not in names and "tf__rate" in names
+    inputs = ft.input_columns(cfg)
+    assert {"ip_rise_ms", "sol_at_rise", "ip__rate50"} <= set(inputs)
+    assert ft.assert_input_columns(["ip_rise_ms", "sol_at_rise"], cfg) == ["ip_rise_ms", "sol_at_rise"]
+    # A build with one window has no long-rate columns.
+    assert not any(n.endswith("__rate50") for n in (c.name for c in ft.table_schema(cfg, False, (10.0,))))
+
+
+def test_build_long_rate_and_ip_rise_columns(tmp_path, starter):
+    shot = make_d3d_shot()
+    t = shot["magnetics_time"].astype(np.float64)
+    shot["magnetics_ECOILA"] = 0.2 * t                                        # 200 kA/s everywhere
+    noise = np.random.default_rng(0).normal(size=t.size)
+    shot["magnetics_F1A"] = np.where((t > 0) & (t < 5000), 100.0, 0.0) + noise  # flat with 1 kA-turn noise
+    path = write_shot(tmp_path / "d3d_shot_rate.parquet", shot)
+    loaded = _load(path, True)
+    frames = ft.build_shot_frames(loaded, "diii_d_train", PARAMS, True)
+    assert np.allclose(frames["sol__rate"], 200.0, rtol=1e-5) and np.allclose(frames["sol__rate50"], 200.0, rtol=1e-5)
+    # The longer window averages the sample noise down: slope noise falls as window^-1.5.
+    short, long = frames["magnetics_F1A__rate"].to_numpy(), frames["magnetics_F1A__rate50"].to_numpy()
+    assert np.sqrt(np.mean(long ** 2)) < 0.3 * np.sqrt(np.mean(short ** 2)) and np.sqrt(np.mean(short ** 2)) > 10.0
+    # One rise per shot, on the loaded Ip axis: the 10 percent crossing, the first 0.5 ms sample after 10 ms.
+    rise = frames["ip_rise_ms"].to_numpy()
+    expected = ip_alignment.breakdown_time_ms(loaded["magnetics_plasma_current_times"], loaded["magnetics_plasma_current"])
+    assert np.all(rise == expected) and expected == pytest.approx(10.25, abs=1e-3)
+    assert np.allclose(frames["sol_at_rise"], 0.2 * expected, atol=0.2 * 1.0)   # ramp value within the 2 ms window
+    _, row = ft.build_one(path, "diii_d_train", PARAMS)
+    assert row["ip_rise_ms"] == expected and row["sol_at_rise"] == pytest.approx(float(frames["sol_at_rise"].iloc[0]))
+    index = ft.shot_index_frame([row])
+    assert index["ip_rise_ms"].dtype == np.float64 and index["sol_at_rise"].dtype == np.float64
+
+
+def test_ip_rise_on_mast_skips_the_merged_clock_holes(tmp_path, starter):
+    clean = make_mast_shot()
+    holed = make_mast_shot()
+    for column in ("magnetics_plasma_current", "magnetics_sol_current"):
+        holed[column] = np.asarray(holed[column], dtype=np.float64)
+        holed[column][::6] = np.nan
+    rises = []
+    for name, shot in (("clean", clean), ("holed", holed)):
+        path = write_shot(tmp_path / f"mast_shot_{name}.parquet", drop_labels(shot))
+        frames = ft.build_shot_frames(_load(path, False), "mast_public_test", PARAMS, False)
+        rises.append((float(frames["ip_rise_ms"].iloc[0]), float(frames["sol_at_rise"].iloc[0])))
+    assert np.isfinite(rises[1][0]) and rises[1][0] - rises[0][0] in (0.0, 2.0)  # at most the one skipped sample
+    assert rises[0][1] == -40.0 and rises[1][1] == -40.0

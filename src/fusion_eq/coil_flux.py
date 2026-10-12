@@ -25,6 +25,10 @@ applied at that point, together with a flat solenoid term, a flux that is the sa
 at every node and proportional to the solenoid current, which stands in for the
 part of the solenoid's flux that the lumped rectangle does not produce.
 
+A point table (``PointTable``) holds the same patterns at a list of points instead of the
+grid, for features that sample the coil flux at fixed positions; it applies the scales
+and the flat term by the same code.
+
 Skew convention (EFIT ``AF`` / ``AF2``, confirmed from the starter kit README, the
 EFIT filament routine and the data): ``coil_angle1`` tilts the top and bottom sides
 from the horizontal, shifting a point at radial offset u by ``u tan(angle1)`` in Z;
@@ -94,24 +98,28 @@ def filament_flux(r, z, rc, zc, current_a=1.0, min_distance_m: float = 0.0) -> n
     return MU0 * np.asarray(current_a, dtype=np.float64) / (2.0 * np.pi) * 0.5 * np.sqrt(denominator) * bracket
 
 
-def filament_flux_on_grid(grid_r, grid_z, rc, zc, current_a, min_distance_m: float = 0.0) -> np.ndarray:
-    """Sum of the flux of many filaments on a grid, as a ``(len(grid_z), len(grid_r))`` map.
+def filament_flux_at_points(points_r, points_z, rc, zc, current_a, min_distance_m: float = 0.0) -> np.ndarray:
+    """Sum of the flux of many filaments at a list of points, as a ``(n_points,)`` array.
 
     Filaments are processed in chunks so the intermediate array stays small.
     """
-    grid_r = np.asarray(grid_r, dtype=np.float64)
-    grid_z = np.asarray(grid_z, dtype=np.float64)
+    nodes_r = np.asarray(points_r, dtype=np.float64).ravel()[:, None]
+    nodes_z = np.asarray(points_z, dtype=np.float64).ravel()[:, None]
     rc = np.asarray(rc, dtype=np.float64).ravel()
     zc = np.asarray(zc, dtype=np.float64).ravel()
     current = np.broadcast_to(np.asarray(current_a, dtype=np.float64), rc.shape)
-    rr, zz = np.meshgrid(grid_r, grid_z)
-    nodes_r, nodes_z = rr.ravel()[:, None], zz.ravel()[:, None]
     out = np.zeros(nodes_r.shape[0])
     for start in range(0, rc.size, _FILAMENT_CHUNK):
         sl = slice(start, start + _FILAMENT_CHUNK)
         out += filament_flux(nodes_r, nodes_z, rc[None, sl], zc[None, sl], current[None, sl],
                              min_distance_m).sum(axis=1)
-    return out.reshape(rr.shape)
+    return out
+
+
+def filament_flux_on_grid(grid_r, grid_z, rc, zc, current_a, min_distance_m: float = 0.0) -> np.ndarray:
+    """Sum of the flux of many filaments on a grid, as a ``(len(grid_z), len(grid_r))`` map."""
+    rr, zz = np.meshgrid(np.asarray(grid_r, dtype=np.float64), np.asarray(grid_z, dtype=np.float64))
+    return filament_flux_at_points(rr, zz, rc, zc, current_a, min_distance_m).reshape(rr.shape)
 
 
 # ----------------------------------------------------------------------------- geometry
@@ -287,21 +295,50 @@ def element_current_fraction(cfg: MachineConfig, column: str, n_elements: int) -
     raise ValueError(f"unknown turn convention {convention.turns!r}")
 
 
-def column_pattern(cfg: MachineConfig, geometry: CoilGeometry, column: str, grid_r, grid_z,
-                   n_filaments: int = DEFAULT_N_FILAMENTS) -> np.ndarray:
-    """Flux map in Wb/rad for 1 kA of one current column under the machine's convention."""
+def column_pattern_at_points(cfg: MachineConfig, geometry: CoilGeometry, column: str, points_r, points_z,
+                             n_filaments: int = DEFAULT_N_FILAMENTS) -> np.ndarray:
+    """Flux in Wb/rad at a list of points for 1 kA of one current column, ``(n_points,)``."""
     idx = geometry.elements_of(column)
     if idx.size == 0:
         raise KeyError(f"no geometry element for {column}")
     fraction = element_current_fraction(cfg, column, idx.size)
-    pattern = np.zeros((len(grid_z), len(grid_r)))
+    pattern = np.zeros(np.asarray(points_r).size)
     for i in idx:
         r, z, sub_w, sub_h = element_filaments(geometry.r[i], geometry.z[i], geometry.width[i],
                                                geometry.height[i], geometry.angle1[i], geometry.angle2[i],
                                                n_filaments)
         current = A_PER_KA * fraction / r.size
-        pattern += filament_flux_on_grid(grid_r, grid_z, r, z, current, GMD_FACTOR * (sub_w + sub_h))
+        pattern += filament_flux_at_points(points_r, points_z, r, z, current, GMD_FACTOR * (sub_w + sub_h))
     return pattern
+
+
+def column_pattern(cfg: MachineConfig, geometry: CoilGeometry, column: str, grid_r, grid_z,
+                   n_filaments: int = DEFAULT_N_FILAMENTS) -> np.ndarray:
+    """Flux map in Wb/rad for 1 kA of one current column under the machine's convention."""
+    rr, zz = np.meshgrid(np.asarray(grid_r, dtype=np.float64), np.asarray(grid_z, dtype=np.float64))
+    return column_pattern_at_points(cfg, geometry, column, rr, zz, n_filaments).reshape(rr.shape)
+
+
+def _scaled_currents(machine: str, columns: tuple[str, ...], currents_ka, scales) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Currents ``(frames, n_columns)`` with the scales applied, the flat solenoid term per
+    frame in Wb/rad (computed from the unscaled solenoid current), and whether one frame
+    was given. Shared by ``GreenTable.flux`` and ``PointTable.flux``."""
+    c = np.nan_to_num(np.asarray(currents_ka, dtype=np.float64))
+    single = c.ndim == 1
+    c = np.atleast_2d(c)
+    if c.shape[1] != len(columns):
+        raise ValueError(f"expected {len(columns)} currents, got {c.shape[1]}")
+    flat_term = np.zeros(c.shape[0])
+    if isinstance(scales, CoilScales):
+        if scales.machine != machine:
+            raise ValueError(f"scales are for {scales.machine}, the table for {machine}")
+        if scales.flat_wb_per_ka != 0.0:
+            sol = list(columns).index(machine_config(machine).solenoid_column)
+            flat_term = scales.flat_wb_per_ka * c[:, sol]
+        c = c * scales.vector(columns)
+    elif scales is not None:
+        c = c * np.asarray(scales, dtype=np.float64)
+    return c, flat_term, single
 
 
 @dataclass
@@ -342,23 +379,9 @@ class GreenTable:
         Returns:
             ``(nZ, nR)`` for one frame or ``(frames, nZ, nR)`` for many.
         """
-        c = np.nan_to_num(np.asarray(currents_ka, dtype=np.float64))
-        single = c.ndim == 1
-        c = np.atleast_2d(c)
-        if c.shape[1] != len(self.columns):
-            raise ValueError(f"expected {len(self.columns)} currents, got {c.shape[1]}")
-        flat_term = 0.0
-        if isinstance(scales, CoilScales):
-            if scales.machine != self.machine:
-                raise ValueError(f"scales are for {scales.machine}, the table for {self.machine}")
-            if scales.flat_wb_per_ka != 0.0:
-                sol = self.column_index([machine_config(self.machine).solenoid_column])[0]
-                flat_term = scales.flat_wb_per_ka * c[:, sol][:, None, None]
-            c = c * scales.vector(self.columns)
-        elif scales is not None:
-            c = c * np.asarray(scales, dtype=np.float64)
+        c, flat_term, single = _scaled_currents(self.machine, self.columns, currents_ka, scales)
         flat = c @ self.patterns.reshape(len(self.columns), -1)
-        out = flat.reshape(c.shape[0], *self.patterns.shape[1:]) + flat_term
+        out = flat.reshape(c.shape[0], *self.patterns.shape[1:]) + flat_term[:, None, None]
         return out[0] if single else out
 
     def column_index(self, columns: Iterable[str]) -> np.ndarray:
@@ -413,6 +436,78 @@ def build_green_table(machine: str | MachineConfig, geometry: CoilGeometry, grid
                       grid_hash=sha256_of_arrays(grid_r, grid_z),
                       conventions={c: cfg.coil_convention(c).turns for c in columns},
                       elements_per_column=geometry.elements_per_column())
+
+
+@dataclass
+class PointTable:
+    """One flux value per point and current column of a machine: a Green's table on a list
+    of points instead of the grid.
+
+    Attributes:
+        machine: Machine name.
+        columns: Current columns in pattern order.
+        patterns: ``(n_columns, n_points)`` flux in Wb/rad per kA of the column's value.
+        points_r, points_z: Point positions in metres.
+        n_filaments: Filaments along the shorter side of each element.
+        geometry_hash, points_hash: SHA-256 of the inputs, for provenance and the cache key.
+    """
+
+    machine: str
+    columns: tuple[str, ...]
+    patterns: np.ndarray
+    points_r: np.ndarray
+    points_z: np.ndarray
+    n_filaments: int
+    geometry_hash: str
+    points_hash: str
+
+    def flux(self, currents_ka, scales=None) -> np.ndarray:
+        """Coil flux at the points in Wb/rad, ``(n_points,)`` for one frame or
+        ``(frames, n_points)`` for many; arguments as ``GreenTable.flux``."""
+        c, flat_term, single = _scaled_currents(self.machine, self.columns, currents_ka, scales)
+        out = c @ self.patterns + flat_term[:, None]
+        return out[0] if single else out
+
+    def column_index(self, columns: Iterable[str]) -> np.ndarray:
+        """Indices of the given columns in ``columns`` order; raises for unknown names."""
+        lookup = {c: i for i, c in enumerate(self.columns)}
+        return np.array([lookup[c] for c in columns], dtype=int)
+
+    def save(self, path: Path | str) -> None:
+        meta = {"machine": self.machine, "columns": list(self.columns), "n_filaments": self.n_filaments,
+                "geometry_hash": self.geometry_hash, "points_hash": self.points_hash, "units": "Wb/rad per kA",
+                "gmd_factor": GMD_FACTOR}
+        np.savez(path, patterns=self.patterns, points_r=self.points_r, points_z=self.points_z,
+                 meta=np.array(json.dumps(meta, sort_keys=True)))
+
+    @classmethod
+    def load(cls, path: Path | str) -> "PointTable":
+        with np.load(path, allow_pickle=False) as f:
+            meta = json.loads(str(f["meta"]))
+            return cls(machine=meta["machine"], columns=tuple(meta["columns"]), patterns=f["patterns"],
+                       points_r=f["points_r"], points_z=f["points_z"], n_filaments=int(meta["n_filaments"]),
+                       geometry_hash=meta["geometry_hash"], points_hash=meta["points_hash"])
+
+
+def build_point_table(machine: str | MachineConfig, geometry: CoilGeometry, points_r, points_z,
+                      n_filaments: int = DEFAULT_N_FILAMENTS) -> PointTable:
+    """Builds the point table of a machine from its geometry, with the code and filament
+    subdivision of ``build_green_table``.
+
+    Raises:
+        ValueError: when a geometry column has no turn convention on the machine.
+    """
+    cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
+    problems = geometry.check_against_machine(cfg)
+    if problems:
+        raise ValueError("; ".join(problems))
+    points_r = np.asarray(points_r, dtype=np.float64).ravel()
+    points_z = np.asarray(points_z, dtype=np.float64).ravel()
+    columns = geometry.columns
+    patterns = np.stack([column_pattern_at_points(cfg, geometry, c, points_r, points_z, n_filaments) for c in columns])
+    return PointTable(machine=cfg.name, columns=columns, patterns=patterns, points_r=points_r, points_z=points_z,
+                      n_filaments=n_filaments, geometry_hash=geometry.hash(),
+                      points_hash=sha256_of_arrays(points_r, points_z))
 
 
 ADOPTED = "adopted"
