@@ -354,7 +354,7 @@ def coil_reads(cfg: MachineConfig, params: dict | None = None) -> list[str]:
     return ["ip__mean", "sol__mean", *[f"{c}__mean" for c in cfg.shaping_coil_columns]]
 
 
-def _frame_column(cfg: MachineConfig, table_column: str) -> str:
+def frame_current_column(cfg: MachineConfig, table_column: str) -> str:
     return "sol__mean" if table_column == cfg.solenoid_column else f"{table_column}__mean"
 
 
@@ -365,7 +365,7 @@ def _coil_values(ctx: FeatureContext) -> np.ndarray:
         res = ctx.resources
         if res.point_table is None:
             raise ValueError("coil features need a point table")
-        currents = np.column_stack([ctx.column(_frame_column(ctx.cfg, c)) for c in res.point_table.columns])
+        currents = np.column_stack([ctx.column(frame_current_column(ctx.cfg, c)) for c in res.point_table.columns])
         values = cp.coil_point_values(res.point_table, currents, ctx.column("ip__mean"), res.r0_m, res.scales,
                                       ctx.config.min_abs_ip_ka)
         values[~np.isfinite(currents).all(axis=1)] = np.nan

@@ -1,0 +1,462 @@
+{
+ "columns": [
+  "coil_pt_00",
+  "coil_pt_01",
+  "coil_pt_02",
+  "coil_pt_03",
+  "coil_pt_04",
+  "coil_pt_05",
+  "coil_pt_06",
+  "coil_pt_07",
+  "coil_pt_08",
+  "coil_pt_09",
+  "coil_pt_10",
+  "coil_pt_11",
+  "coil_pt_12",
+  "coil_pt_13",
+  "coil_pt_14",
+  "coil_pt_15",
+  "coil_pt_16",
+  "coil_pt_17",
+  "coil_pt_18",
+  "coil_pt_19",
+  "coil_pt_20",
+  "coil_pt_21",
+  "coil_c10",
+  "coil_c01",
+  "coil_c20",
+  "coil_c11",
+  "coil_c02",
+  "coil_c30",
+  "coil_c21",
+  "coil_c12",
+  "coil_c03",
+  "ts_beta_p",
+  "ts_pe_peaking",
+  "ts_valid",
+  "q_cyl",
+  "ip_frac",
+  "ip_rate_rel",
+  "resistive_age",
+  "shafranov_lambda",
+  "ohmic_flux_used",
+  "greenwald_frac"
+ ],
+ "n_rows": 2578948,
+ "rules": {
+  "coil_c01": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c02": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c03": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c10": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c11": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c12": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c20": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c21": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_c30": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_00": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_01": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_02": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_03": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_04": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_05": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_06": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_07": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_08": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_09": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_10": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_11": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_12": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_13": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_14": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_15": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_16": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_17": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_18": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_19": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_20": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "coil_pt_21": {
+   "scale": "robust",
+   "scale_group": "coil_pattern",
+   "scale_with": "source",
+   "transform": null
+  },
+  "greenwald_frac": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ip_frac": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ip_rate_rel": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ohmic_flux_used": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "q_cyl": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "resistive_age": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "shafranov_lambda": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ts_beta_p": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ts_pe_peaking": {
+   "scale": "robust",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  },
+  "ts_valid": {
+   "scale": "none",
+   "scale_group": null,
+   "scale_with": "source",
+   "transform": null
+  }
+ },
+ "source": {
+  "coil_c01": [
+   0.0,
+   0.002818205044604838
+  ],
+  "coil_c02": [
+   0.010858963243663311,
+   0.002920775208622217
+  ],
+  "coil_c03": [
+   0.0,
+   0.0018367980665061623
+  ],
+  "coil_c10": [
+   -0.07159674167633057,
+   0.014734327793121338
+  ],
+  "coil_c11": [
+   0.0,
+   0.003937606001272798
+  ],
+  "coil_c12": [
+   -0.008916587568819523,
+   0.003721265704371035
+  ],
+  "coil_c20": [
+   -0.0261921975761652,
+   0.004154670983552933
+  ],
+  "coil_c21": [
+   0.0,
+   0.003014300251379609
+  ],
+  "coil_c30": [
+   0.0012576396111398935,
+   0.004757296002935618
+  ],
+  "coil_pt_00": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_01": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_02": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_03": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_04": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_05": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_06": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_07": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_08": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_09": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_10": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_11": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_12": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_13": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_14": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_15": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_16": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_17": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_18": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_19": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_20": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "coil_pt_21": [
+   0.02164702955633402,
+   0.07182026281952858
+  ],
+  "greenwald_frac": [
+   0.5489574074745178,
+   0.39351267367601395
+  ],
+  "ip_frac": [
+   0.9823742508888245,
+   0.05383580923080444
+  ],
+  "ip_rate_rel": [
+   0.10485577583312988,
+   1.4203721731901169
+  ],
+  "ohmic_flux_used": [
+   -0.18879127502441406,
+   0.08842520788311958
+  ],
+  "q_cyl": [
+   2.672300338745117,
+   0.8519235253334045
+  ],
+  "resistive_age": [
+   0.8051488995552063,
+   0.6598190069198608
+  ],
+  "shafranov_lambda": [
+   0.7498210072517395,
+   0.4615107923746109
+  ],
+  "ts_beta_p": [
+   0.10883171856403351,
+   0.1441489038988948
+  ],
+  "ts_pe_peaking": [
+   2.6361827850341797,
+   0.6131010055541992
+  ],
+  "ts_valid": [
+   0.0,
+   1.0
+  ]
+ },
+ "source_machine": "DIII-D",
+ "target": {}
+}

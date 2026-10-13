@@ -54,6 +54,12 @@ def _far_coils_mast(shot: dict) -> dict:
 
 @pytest.fixture
 def workspace(tmp_path, starter) -> dict:
+    return make_workspace(tmp_path)
+
+
+def make_workspace(tmp_path: Path) -> dict:
+    """Synthetic raw data (three DIII-D training shots, one DIII-D and one MAST test shot),
+    their frame table, grid Green's tables and a split file under ``tmp_path``."""
     data = tmp_path / "data"
     for split in dataset.DATA_SPLITS:
         (data / split).mkdir(parents=True)
