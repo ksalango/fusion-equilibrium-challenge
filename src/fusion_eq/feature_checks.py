@@ -1,4 +1,5 @@
-"""Calculations of the feature checks X1 to X16 (``docs/FEATURES.md``).
+"""Calculations of the feature checks X1 to X16 (``docs/FEATURES.md``) and of the stretch-term
+diagnostic for feature version 2 (notebook 06, section 6b).
 
 The functions take arrays and tables and read no file: ``scripts/profile_features.py``
 (X1 to X15), ``scripts/feature_linear_check.py`` (X16) and ``notebooks/06_features.ipynb``
@@ -19,13 +20,18 @@ import numpy as np
 import pandas as pd
 
 from fusion_eq.coil_flux import MU0
+from fusion_eq.coil_pattern import TERM_NAMES, Layout, term_operator
 from fusion_eq.coil_scales import FLAT_TOP_LEVEL, REFERENCE_PHASES, mirror_pairs
-from fusion_eq.features import check_reads, frame_current_column
+from fusion_eq.features import FeatureConfig, check_reads, frame_current_column
 from fusion_eq.machines import MachineConfig, machine_config
 
 A_PER_KA = 1000.0
 STATUSES = ("pass", "fail", "review")
 PHASES = ("all", *REFERENCE_PHASES)
+# Splits compared against the training frames, in the order that sets the X10 seeds.
+COMPARED_SPLITS = ("validation", "diii_d_public_test", "mast_public_test")
+# Rule of a robust-scaled column without a scale group (in-memory variants).
+ROBUST_RULE = {"scale": "robust", "scale_group": None, "scale_with": "source", "transform": None}
 # Percentile band of the training frames that the range checks compare against.
 BAND_PERCENTILES = (1.0, 99.0)
 # A scaled value beyond this magnitude counts as an extreme (check X11).
@@ -65,6 +71,25 @@ def check_table_markdown(checks: Iterable[Check]) -> str:
     lines = ["| Id | Check | Status | Summary |", "| --- | --- | --- | --- |"]
     for c in checks:
         lines.append(f"| {c.id} | {c.title} | {c.status} | {c.summary.replace('|', '/')} |")
+    return "\n".join(lines)
+
+
+def _markdown_cell(value, digits: int) -> str:
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        return "nan" if not np.isfinite(value) else f"{value:.{digits}g}"
+    return str(value).replace("|", "/")
+
+
+def markdown_table(table: pd.DataFrame, digits: int = 4) -> str:
+    """A table as Markdown, floats to ``digits`` significant digits, the index left out
+    (reset it first to keep it)."""
+    lines = ["| " + " | ".join(str(c) for c in table.columns) + " |", "| " + " | ".join("---" for _ in table.columns) + " |"]
+    for row in table.itertuples(index=False):
+        lines.append("| " + " | ".join(_markdown_cell(v, digits) for v in row) + " |")
     return "\n".join(lines)
 
 
@@ -258,6 +283,53 @@ def group_shares(reference: np.ndarray, queries: np.ndarray, index: np.ndarray,
         return {g: np.where(total > 0, diff2[:, list(cols)].sum(axis=1) / total, np.nan) for g, cols in groups.items()}
 
 
+def x10_samples(n_train: int, n_compared: Mapping[str, int], n_train_frames: int, n_eval_frames: int,
+                seed: int) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Rows drawn by check X10: ``n_train_frames`` training rows with ``seed``, and
+    ``n_eval_frames`` rows of the k-th compared split (in the order of ``n_compared``) with
+    ``seed + 1 + k``.
+
+    Args:
+        n_train: Rows of the training table.
+        n_compared: Compared split to its number of rows.
+    """
+    train_rows = sample_rows(n_train, n_train_frames, seed)
+    return train_rows, {split: sample_rows(n, n_eval_frames, seed + 1 + k) for k, (split, n) in enumerate(n_compared.items())}
+
+
+def column_groups(columns: Sequence[str], group_of: Mapping[str, str]) -> dict[str, list[int]]:
+    """Group to the positions of its columns in ``columns``, groups in order of appearance."""
+    groups: dict[str, list[int]] = {}
+    for j, c in enumerate(columns):
+        groups.setdefault(group_of[c], []).append(j)
+    return groups
+
+
+def combined_distance(reference: np.ndarray, queries: Mapping[str, np.ndarray],
+                      groups: Mapping[str, Sequence[int]]) -> pd.DataFrame:
+    """Nearest-neighbour distance of every query row of each split to the reference rows
+    (check X10).
+
+    Returns:
+        One row per query row, splits in the order of ``queries``: ``split``, ``distance``,
+        ``nearest`` (row of ``reference``) and ``share_<group>`` per group.
+    """
+    parts = []
+    for split, q in queries.items():
+        distance, nearest = nearest_neighbours(reference, q)
+        part = pd.DataFrame({"split": split, "distance": distance, "nearest": nearest})
+        for g, v in group_shares(reference, q, nearest, groups).items():
+            part[f"share_{g}"] = v
+        parts.append(part)
+    return pd.concat(parts, ignore_index=True)
+
+
+def group_share_medians(table: pd.DataFrame, keys: Sequence[str] = ("set", "split")) -> pd.DataFrame:
+    """Median of each ``share_<group>`` column per key, keys in order of appearance."""
+    columns = [c for c in table.columns if c.startswith("share_")]
+    return table.groupby(list(keys), sort=False)[columns].median().reset_index()
+
+
 def distance_summary(table: pd.DataFrame, reference_split: str = "validation", percentiles=(50.0, 90.0, 99.0)) -> pd.DataFrame:
     """Percentiles of the nearest-neighbour distance per set and split, and the share of each
     split's frames beyond the ``reference_split`` 99th percentile of the same set.
@@ -341,6 +413,103 @@ def direction_comparison(table: pd.DataFrame, direction, columns: Sequence[str])
                      "share_negative_in_positive_band": float(((neg_v >= pos["q01"]) & (neg_v <= pos["q99"])).mean())
                      if neg_v.size and pos["n"] else np.nan})
     return pd.DataFrame(rows)
+
+
+# ------------------------------------------------------------------------- stretch terms
+def vacuum_residual(table: pd.DataFrame, machine: str | MachineConfig) -> np.ndarray:
+    """``coil_c20 + coil_c02 - (a0 / (2 R0)) coil_c10`` per row, without units
+    (diagnostic for feature version 2).
+
+    A current-free field obeys the Grad-Shafranov equation without source,
+    ``psi_RR - psi_R / R + psi_ZZ = 0``. In ``x = (R - R0) / a0``, ``y = Z / a0`` at the
+    reference point this reads ``2 c20 + 2 c02 = (a0 / R0) c10`` for the Taylor
+    coefficients. The coil flux is current-free away from the coils, so the relation is
+    exact there; on the fitted terms the residual measures what the order-3 least-squares
+    fit over the layout takes in from higher orders.
+
+    Args:
+        table: Rows with ``coil_c10``, ``coil_c20`` and ``coil_c02``.
+        machine: Machine of the rows; R0 and a0 come from ``machines.py``.
+    """
+    cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
+    r0, a0 = cfg.major_radius.value, cfg.minor_radius.value
+    c10, c20, c02 = (table[c].to_numpy(dtype=np.float64) for c in ("coil_c10", "coil_c20", "coil_c02"))
+    return c20 + c02 - (a0 / (2.0 * r0)) * c10
+
+
+def shaping(table: pd.DataFrame) -> np.ndarray:
+    """``(coil_c02 - coil_c20) / 2`` per row: the stretch quantity left beside ``coil_c10``
+    when the vacuum relation holds. Both terms are even under the up-down mirror, so the
+    shaping is even."""
+    return 0.5 * (table["coil_c02"].to_numpy(dtype=np.float64) - table["coil_c20"].to_numpy(dtype=np.float64))
+
+
+def stretch_quantities(table: pd.DataFrame, machine: str | MachineConfig) -> pd.DataFrame:
+    """``vacuum_residual`` and ``shaping`` of every row, on the table's index."""
+    return pd.DataFrame({"vacuum_residual": vacuum_residual(table, machine), "shaping": shaping(table)}, index=table.index)
+
+
+def fitted_terms(layout: Layout, psi, r0_m: float, a0_m: float) -> dict[str, float]:
+    """Named terms of the order-3 fit to a field given as a function, the route of the coil
+    terms: the field sampled at the layout's points in metres, taken relative to the
+    reference point, fitted with ``coil_pattern.term_operator``.
+
+    Args:
+        layout: Sample points in normalized coordinates.
+        psi: Function of ``(R_m, Z_m)`` arrays returning the field at each point.
+        r0_m, a0_m: Reference radii in metres.
+
+    Returns:
+        ``coil_<term>`` to the fitted coefficient, in the units of ``psi``.
+    """
+    pr, pz = layout.physical(r0_m, a0_m)
+    values = np.asarray(psi(pr, pz), dtype=np.float64)
+    coefficients = term_operator(layout) @ (values[:-1] - values[-1])
+    return {f"coil_{name}": float(c) for name, c in zip(TERM_NAMES, coefficients)}
+
+
+def relative_size(values, reference) -> float:
+    """Median of ``abs(values)`` over the median of ``abs(reference)``, each over its finite
+    values."""
+    v = np.abs(np.asarray(values, dtype=np.float64))
+    r = np.abs(np.asarray(reference, dtype=np.float64))
+    v, r = v[np.isfinite(v)], r[np.isfinite(r)]
+    if v.size == 0 or r.size == 0 or np.median(r) == 0:
+        return np.nan
+    return float(np.median(v) / np.median(r))
+
+
+def variant_rules(config: FeatureConfig, columns: Sequence[str], unscaled: Sequence[str] = (),
+                  extra: Mapping[str, Mapping] | None = None) -> dict[str, dict]:
+    """Scaling rules of an in-memory feature variant, for ``RobustScaler.fit_rules``.
+
+    Args:
+        config: Configuration giving the rule of each configured column.
+        columns: Columns of the variant, in order.
+        unscaled: Columns given identity scaling (``scale: none``).
+        extra: Rule of each column outside the configuration.
+
+    Raises:
+        KeyError: for a column neither configured nor in ``extra``, or an ``unscaled``
+            column not among ``columns``.
+    """
+    extra = dict(extra or {})
+    missing = [c for c in unscaled if c not in columns]
+    if missing:
+        raise KeyError(f"unscaled columns not in the variant: {missing}")
+    specs = config.column_specs()
+    rules = {}
+    for c in columns:
+        if c in extra:
+            rules[c] = {**ROBUST_RULE, **extra[c]}
+        elif c in specs:
+            s = specs[c]
+            rules[c] = {"scale": s.scale, "scale_group": s.scale_group, "scale_with": s.scale_with, "transform": s.transform}
+        else:
+            raise KeyError(f"column {c!r} is neither configured nor given a rule")
+        if c in unscaled:
+            rules[c].update(scale="none", scale_group=None)
+    return rules
 
 
 # ------------------------------------------------------------------------- force balance

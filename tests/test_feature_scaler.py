@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fusion_eq import features as fe
+from fusion_eq import feature_checks as fc, features as fe
 from fusion_eq.feature_scaler import RobustScaler
 from tests.test_features import CONFIG, make_frames, point_table, resources
 
@@ -37,6 +37,23 @@ def test_fit_on_originals_and_mirrors_centres_odd_features_and_shares_group_scal
     q25, q50, q75 = np.percentile(np.concatenate([q, q]), [25, 50, 75])
     assert scaler.source["q_cyl"] == pytest.approx([q50, q75 - q25])
     assert scaler.source["ts_valid"] == [0.0, 1.0]
+
+
+def test_fit_rules_reproduces_fit_and_serves_in_memory_variants(built):
+    mirrored = fe.mirror_features(built, CONFIG)
+    reference = RobustScaler.fit(built, mirrored, CONFIG)
+    same = RobustScaler.fit_rules(built, mirrored, fc.variant_rules(CONFIG, CONFIG.all_columns()))
+    assert same.to_dict() == reference.to_dict()
+    # Variant: ip_frac unscaled, and a column outside the configuration added with a robust rule.
+    original, mirror = built.assign(extra=2.0 * built["q_cyl"]), mirrored.assign(extra=2.0 * mirrored["q_cyl"])
+    columns = ["coil_c10", "ip_frac", "extra"]
+    variant = RobustScaler.fit_rules(original, mirror, fc.variant_rules(CONFIG, columns, ["ip_frac"], {"extra": {}}))
+    assert variant.columns == tuple(columns) and variant.n_rows == 2 * len(built)
+    assert variant.source["ip_frac"] == [0.0, 1.0] and variant.source["coil_c10"] == reference.source["coil_c10"]
+    assert variant.source["extra"] == pytest.approx([2.0 * v for v in reference.source["q_cyl"]])
+    x = variant.transform(original, "DIII-D")
+    finite = built["ip_frac"].notna().to_numpy()
+    assert np.array_equal(x[finite, 1], built["ip_frac"].to_numpy()[finite])
 
 
 def test_transform_scales_with_the_training_statistics_and_sets_nan_to_zero(built):

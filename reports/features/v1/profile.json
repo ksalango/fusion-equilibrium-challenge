@@ -1,0 +1,1586 @@
+{
+  "version": 1,
+  "config_hash": "e129d1316779c3b3869798eabf73d10398a6f377ecf740d997855bd1b3b2264d",
+  "feature_dir": "../data/processed/features/v1",
+  "split_file": "splits/split_v1.json",
+  "n_rows": {
+    "train": 1289474,
+    "validation": 191411,
+    "diii_d_public_test": 193359,
+    "mast_public_test": 69075
+  },
+  "n_shots": {
+    "train": 5821,
+    "validation": 870,
+    "diii_d_public_test": 874,
+    "mast_public_test": 1206
+  },
+  "x1": {
+    "rows": {
+      "diii_d_train": 1559340,
+      "diii_d_public_test": 193359,
+      "mast_public_test": 69075
+    },
+    "build_counts": {
+      "diii_d_train": {
+        "n_shots": 7041,
+        "n_rows": 1559340,
+        "n_frame_table_rows": 1559340,
+        "x1_rows_match": true
+      },
+      "diii_d_public_test": {
+        "n_shots": 874,
+        "n_rows": 193359,
+        "n_frame_table_rows": 193359,
+        "x1_rows_match": true
+      },
+      "mast_public_test": {
+        "n_shots": 1206,
+        "n_rows": 69075,
+        "n_frame_table_rows": 69075,
+        "x1_rows_match": true
+      }
+    },
+    "config_hash_matches": true
+  },
+  "x2": {
+    "reads": {
+      "DIII-D": {
+        "coil_pt": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c10": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c01": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c20": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c11": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c02": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c30": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c21": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c12": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "coil_c03": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "ts_beta_p": [
+          "ip__mean",
+          "ts_core_pe_mean__interp",
+          "ts_core_valid"
+        ],
+        "ts_pe_peaking": [
+          "ts_core_pe_peak__interp",
+          "ts_core_pe_mean__interp",
+          "ts_core_valid"
+        ],
+        "ts_valid": [
+          "ts_core_valid"
+        ],
+        "q_cyl": [
+          "ip__mean",
+          "tf__mean"
+        ],
+        "ip_frac": [
+          "ip_over_peak"
+        ],
+        "ip_rate_rel": [
+          "ip__mean",
+          "ip__rate50",
+          "ts_core_te_peak__interp",
+          "ts_core_valid"
+        ],
+        "resistive_age": [
+          "time_ms",
+          "ip_rise_ms",
+          "ts_core_te_peak__interp",
+          "ts_core_valid"
+        ],
+        "shafranov_lambda": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_F1A__mean",
+          "magnetics_F1B__mean",
+          "magnetics_F2A__mean",
+          "magnetics_F2B__mean",
+          "magnetics_F3A__mean",
+          "magnetics_F3B__mean",
+          "magnetics_F4A__mean",
+          "magnetics_F4B__mean",
+          "magnetics_F5A__mean",
+          "magnetics_F5B__mean",
+          "magnetics_F6A__mean",
+          "magnetics_F6B__mean",
+          "magnetics_F7A__mean",
+          "magnetics_F7B__mean",
+          "magnetics_F8A__mean",
+          "magnetics_F8B__mean",
+          "magnetics_F9A__mean",
+          "magnetics_F9B__mean"
+        ],
+        "ohmic_flux_used": [
+          "ip__mean",
+          "sol__mean",
+          "sol_at_rise"
+        ],
+        "greenwald_frac": [
+          "ip__mean",
+          "ts_core_ne_peak__interp",
+          "ts_core_valid"
+        ]
+      },
+      "MAST": {
+        "coil_pt": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c10": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c01": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c20": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c11": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c02": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c30": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c21": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c12": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "coil_c03": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "ts_beta_p": [
+          "ip__mean",
+          "ts_core_pe_mean__interp",
+          "ts_core_valid"
+        ],
+        "ts_pe_peaking": [
+          "ts_core_pe_peak__interp",
+          "ts_core_pe_mean__interp",
+          "ts_core_valid"
+        ],
+        "ts_valid": [
+          "ts_core_valid"
+        ],
+        "q_cyl": [
+          "ip__mean",
+          "tf__mean"
+        ],
+        "ip_frac": [
+          "ip_over_peak"
+        ],
+        "ip_rate_rel": [
+          "ip__mean",
+          "ip__rate50",
+          "ts_core_te_peak__interp",
+          "ts_core_valid"
+        ],
+        "resistive_age": [
+          "time_ms",
+          "ip_rise_ms",
+          "ts_core_te_peak__interp",
+          "ts_core_valid"
+        ],
+        "shafranov_lambda": [
+          "ip__mean",
+          "sol__mean",
+          "magnetics_p2l_current__mean",
+          "magnetics_p2u_current__mean",
+          "magnetics_p3l_current__mean",
+          "magnetics_p3u_current__mean",
+          "magnetics_p4l_current__mean",
+          "magnetics_p4u_current__mean",
+          "magnetics_p5l_current__mean",
+          "magnetics_p5u_current__mean",
+          "magnetics_p6l_current__mean",
+          "magnetics_p6u_current__mean"
+        ],
+        "ohmic_flux_used": [
+          "ip__mean",
+          "sol__mean",
+          "sol_at_rise"
+        ],
+        "greenwald_frac": [
+          "ip__mean",
+          "ts_core_ne_peak__interp",
+          "ts_core_valid"
+        ]
+      }
+    },
+    "problems": [],
+    "matches_build": true
+  },
+  "x3": {
+    "low_ip": {
+      "diii_d_train": {
+        "n_frames": 1559340,
+        "n_missing_ip": 0,
+        "n_below_min": 7,
+        "n_affected": 7,
+        "share_affected": 4.489078712788744e-06
+      },
+      "diii_d_public_test": {
+        "n_frames": 193359,
+        "n_missing_ip": 0,
+        "n_below_min": 0,
+        "n_affected": 0,
+        "share_affected": 0.0
+      },
+      "mast_public_test": {
+        "n_frames": 69075,
+        "n_missing_ip": 0,
+        "n_below_min": 0,
+        "n_affected": 0,
+        "share_affected": 0.0
+      }
+    },
+    "min_abs_ip_ka": 20.0
+  },
+  "x4": {
+    "layout_check": {
+      "status": "pass",
+      "symmetric": true,
+      "failing": [],
+      "min_clearance_m": {
+        "DIII-D": 0.2793,
+        "MAST": 0.19931199999999993
+      },
+      "geometry_source": {
+        "DIII-D": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data/diii_d_public_test/d3d_shot_0047b7837b.parquet",
+        "MAST": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data/mast_public_test/mast_shot_0035568738.parquet"
+      }
+    },
+    "clearance_file_ok": true
+  },
+  "x5": {
+    "identity": {
+      "diii_d_train": true,
+      "diii_d_public_test": true,
+      "mast_public_test": true
+    },
+    "swap_difference": {
+      "n_shots": 20,
+      "shots": [
+        "0448d620e0",
+        "0a672c5a6f",
+        "12e65e23a9",
+        "2abef28a77",
+        "41fe301a86",
+        "4bac1949c7",
+        "7f654c231d",
+        "8147e11f7c",
+        "890a49db4a",
+        "8d51a69eaa",
+        "990d86f2c3",
+        "a076601c87",
+        "a152882371",
+        "a4bc596f12",
+        "ba12fb7876",
+        "cedcbf7905",
+        "d7aec3eacb",
+        "e8d670db78",
+        "eebfc7d7c4",
+        "f86d785364"
+      ],
+      "n_frames": 4522,
+      "median": 0.002116199532710379,
+      "p95": 0.004055257139754012,
+      "max": 0.005075902346876891
+    }
+  },
+  "x6": {
+    "table": [
+      {
+        "feature": "coil_c10",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": -0.07218528538942337,
+        "median_negative": -0.06793714687228203,
+        "iqr_positive": 0.015463404357433319,
+        "iqr_negative": 0.007761070504784584,
+        "median_shift_iqr": 0.27472207406251037,
+        "share_negative_in_positive_band": 0.9820017724812853
+      },
+      {
+        "feature": "coil_c01",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": 0.0011017448268830776,
+        "median_negative": 0.0018811009358614683,
+        "iqr_positive": 0.0020907851912852493,
+        "iqr_negative": 0.0017413546447642148,
+        "median_shift_iqr": 0.37275761863384166,
+        "share_negative_in_positive_band": 0.985631587879245
+      },
+      {
+        "feature": "coil_c20",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": -0.02630108781158924,
+        "median_negative": -0.025221524760127068,
+        "iqr_positive": 0.0042352210730314255,
+        "iqr_negative": 0.0031928671523928642,
+        "median_shift_iqr": 0.2549012277863123,
+        "share_negative_in_positive_band": 0.9816906454471744
+      },
+      {
+        "feature": "coil_c11",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": -0.00010377014405094087,
+        "median_negative": -0.0022807169007137418,
+        "iqr_positive": 0.004022872657515109,
+        "iqr_negative": 0.0025106174871325493,
+        "median_shift_iqr": -0.5411423482659978,
+        "share_negative_in_positive_band": 0.9990194784379537
+      },
+      {
+        "feature": "coil_c02",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": 0.010883488692343235,
+        "median_negative": 0.010548640973865986,
+        "iqr_positive": 0.0029000556096434593,
+        "iqr_negative": 0.003087034448981285,
+        "median_shift_iqr": -0.1154625164303026,
+        "share_negative_in_positive_band": 0.9816812173552316
+      },
+      {
+        "feature": "coil_c30",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": 0.0013320866273716092,
+        "median_negative": 2.53208845606423e-05,
+        "iqr_positive": 0.004679505596868694,
+        "iqr_negative": 0.0049193817540071905,
+        "median_shift_iqr": -0.279252950073485,
+        "share_negative_in_positive_band": 0.9678219221993853
+      },
+      {
+        "feature": "coil_c21",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": 9.442842565476894e-05,
+        "median_negative": -0.00022311868087854236,
+        "iqr_positive": 0.0035963841946795583,
+        "iqr_negative": 0.0011981698335148394,
+        "median_shift_iqr": -0.08829621345880848,
+        "share_negative_in_positive_band": 0.9961533384873569
+      },
+      {
+        "feature": "coil_c12",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": -0.008911509066820145,
+        "median_negative": -0.00898170517757535,
+        "iqr_positive": 0.003800169564783573,
+        "iqr_negative": 0.0030517596751451492,
+        "median_shift_iqr": -0.018471836469013708,
+        "share_negative_in_positive_band": 0.9598646125997021
+      },
+      {
+        "feature": "coil_c03",
+        "n_positive": 1182805,
+        "n_negative": 106066,
+        "median_positive": -0.0004874476871918887,
+        "median_negative": -0.0005212924734223634,
+        "iqr_positive": 0.0013957062037661672,
+        "iqr_negative": 0.0011804142050095834,
+        "median_shift_iqr": -0.02424921959875803,
+        "share_negative_in_positive_band": 0.9994720268512058
+      }
+    ]
+  },
+  "x7": {
+    "status": "pass",
+    "medians": {
+      "DIII-D": -2.2589564289213087,
+      "MAST": -1.4852680465406995
+    },
+    "k9_medians": {
+      "DIII-D": -2.096053712866717,
+      "MAST": -1.3505324772284033
+    },
+    "signs_match": true,
+    "order_matches": true,
+    "n_frames": {
+      "DIII-D": 1002719,
+      "MAST": 51915
+    },
+    "k9_source": "reports/coil_flux/reference_ratios.parquet"
+  },
+  "x10": {
+    "n_train_sample": 200000,
+    "n_eval_sample": 5000,
+    "seed": 0,
+    "summary": [
+      {
+        "set": "set_a",
+        "split": "validation",
+        "n": 5000,
+        "max": 23.951044988492182,
+        "validation_p99": 1.059798363367992,
+        "share_beyond_validation_p99": 0.01,
+        "p50": 0.2304470954552359,
+        "p90": 0.48478584856580587,
+        "p99": 1.059798363367992
+      },
+      {
+        "set": "set_a",
+        "split": "diii_d_public_test",
+        "n": 5000,
+        "max": 4.858027466243108,
+        "validation_p99": 1.059798363367992,
+        "share_beyond_validation_p99": 0.0118,
+        "p50": 0.23588166337926217,
+        "p90": 0.4719939518339374,
+        "p99": 1.092117284565743
+      },
+      {
+        "set": "set_a",
+        "split": "mast_public_test",
+        "n": 5000,
+        "max": 7.865675011440004,
+        "validation_p99": 1.059798363367992,
+        "share_beyond_validation_p99": 0.4346,
+        "p50": 1.0269780167658098,
+        "p90": 1.5488137447856891,
+        "p99": 2.850622764779314
+      },
+      {
+        "set": "set_b",
+        "split": "validation",
+        "n": 5000,
+        "max": 24.452412948033178,
+        "validation_p99": 2.1492617513752865,
+        "share_beyond_validation_p99": 0.01,
+        "p50": 0.4210132837751623,
+        "p90": 0.9279446863848584,
+        "p99": 2.1492617513752865
+      },
+      {
+        "set": "set_b",
+        "split": "diii_d_public_test",
+        "n": 5000,
+        "max": 9.923920848197398,
+        "validation_p99": 2.1492617513752865,
+        "share_beyond_validation_p99": 0.0106,
+        "p50": 0.42634965884957293,
+        "p90": 0.9526659786013971,
+        "p99": 2.191928836524122
+      },
+      {
+        "set": "set_b",
+        "split": "mast_public_test",
+        "n": 5000,
+        "max": 28.37324226601637,
+        "validation_p99": 2.1492617513752865,
+        "share_beyond_validation_p99": 1.0,
+        "p50": 4.431167598828718,
+        "p90": 5.519085687252919,
+        "p99": 9.325076696407537
+      }
+    ],
+    "summary_with_mirrors": [
+      {
+        "set": "set_a",
+        "split": "validation",
+        "n": 5000,
+        "max": 23.951044988492182,
+        "validation_p99": 1.0537731124002563,
+        "share_beyond_validation_p99": 0.01,
+        "p50": 0.22880694593034398,
+        "p90": 0.48129704961229325,
+        "p99": 1.0537731124002563
+      },
+      {
+        "set": "set_a",
+        "split": "diii_d_public_test",
+        "n": 5000,
+        "max": 4.858027466243108,
+        "validation_p99": 1.0537731124002563,
+        "share_beyond_validation_p99": 0.0114,
+        "p50": 0.2348325127530324,
+        "p90": 0.4665095245587094,
+        "p99": 1.0815434568668638
+      },
+      {
+        "set": "set_a",
+        "split": "mast_public_test",
+        "n": 5000,
+        "max": 7.865675011440004,
+        "validation_p99": 1.0537731124002563,
+        "share_beyond_validation_p99": 0.443,
+        "p50": 1.0258992400172304,
+        "p90": 1.5483496124278866,
+        "p99": 2.850618740771717
+      },
+      {
+        "set": "set_b",
+        "split": "validation",
+        "n": 5000,
+        "max": 24.43249984278674,
+        "validation_p99": 2.1110525699002625,
+        "share_beyond_validation_p99": 0.01,
+        "p50": 0.4210132837751623,
+        "p90": 0.9201925100475818,
+        "p99": 2.1110525699002625
+      },
+      {
+        "set": "set_b",
+        "split": "diii_d_public_test",
+        "n": 5000,
+        "max": 9.923920848197398,
+        "validation_p99": 2.1110525699002625,
+        "share_beyond_validation_p99": 0.0104,
+        "p50": 0.42634965884957293,
+        "p90": 0.9415452969707515,
+        "p99": 2.143059243210231
+      },
+      {
+        "set": "set_b",
+        "split": "mast_public_test",
+        "n": 5000,
+        "max": 28.37324226601637,
+        "validation_p99": 2.1110525699002625,
+        "share_beyond_validation_p99": 1.0,
+        "p50": 4.426053114023208,
+        "p90": 5.505786429699118,
+        "p99": 9.31257071336069
+      }
+    ],
+    "group_share_medians": [
+      {
+        "set": "set_a",
+        "split": "validation",
+        "share_coil_pattern": 0.15706997635180098,
+        "share_plasma_content": 0.2155261510389314,
+        "share_field_current": 0.01179477620143917,
+        "share_shot_position": 0.4304958091416412,
+        "share_coil_terms": NaN
+      },
+      {
+        "set": "set_a",
+        "split": "diii_d_public_test",
+        "share_coil_pattern": 0.1680834431627809,
+        "share_plasma_content": 0.20932332936960574,
+        "share_field_current": 0.012020837855026438,
+        "share_shot_position": 0.4189636736556025,
+        "share_coil_terms": NaN
+      },
+      {
+        "set": "set_a",
+        "split": "mast_public_test",
+        "share_coil_pattern": 0.6730193783628351,
+        "share_plasma_content": 0.08538023618092261,
+        "share_field_current": 0.026993036632975066,
+        "share_shot_position": 0.16156522515712382,
+        "share_coil_terms": NaN
+      },
+      {
+        "set": "set_b",
+        "split": "validation",
+        "share_coil_pattern": NaN,
+        "share_plasma_content": 0.13948043634103946,
+        "share_field_current": 0.002971655988373053,
+        "share_shot_position": 0.3046558289148624,
+        "share_coil_terms": 0.4070389487863354
+      },
+      {
+        "set": "set_b",
+        "split": "diii_d_public_test",
+        "share_coil_pattern": NaN,
+        "share_plasma_content": 0.14176332706519695,
+        "share_field_current": 0.002928852709089695,
+        "share_shot_position": 0.28645623841948964,
+        "share_coil_terms": 0.421136938477697
+      },
+      {
+        "set": "set_b",
+        "split": "mast_public_test",
+        "share_coil_pattern": NaN,
+        "share_plasma_content": 0.06316466503927377,
+        "share_field_current": 0.053187619254400575,
+        "share_shot_position": 0.043309891489201384,
+        "share_coil_terms": 0.8259122051639736
+      }
+    ]
+  },
+  "x11": {
+    "coil_pt_00": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_01": {
+      "train": 1.5510200283216257e-06,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_02": {
+      "train": 7.755100141608128e-07,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_03": {
+      "train": 1.5510200283216257e-06,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_04": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_05": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_06": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_07": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_08": {
+      "train": 7.755100141608128e-07,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_09": {
+      "train": 1.5510200283216257e-06,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_10": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_11": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_12": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_13": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_14": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_15": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_16": {
+      "train": 7.755100141608128e-07,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_17": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_18": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_19": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_20": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_pt_21": {
+      "train": 1.5510200283216257e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_c10": {
+      "train": 7.755100141608128e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_c01": {
+      "train": 1.5510200283216257e-06,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_c20": {
+      "train": 7.755100141608128e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 5.1717272017335626e-06,
+      "mast_public_test": 0.0018675352877307275
+    },
+    "coil_c11": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 5.171727201733563e-05,
+      "mast_public_test": 0.0
+    },
+    "coil_c02": {
+      "train": 3.877550070804064e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 7.238508867173362e-05
+    },
+    "coil_c30": {
+      "train": 7.755100141608128e-07,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.008121606948968513
+    },
+    "coil_c21": {
+      "train": 7.755100141608128e-07,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "coil_c12": {
+      "train": 0.008887344762282916,
+      "validation": 0.010448720292982118,
+      "diii_d_public_test": 0.016223708231838187,
+      "mast_public_test": 0.0
+    },
+    "coil_c03": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "ts_beta_p": {
+      "train": 5.4285700991256904e-06,
+      "validation": 1.0448720292982117e-05,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 1.4477017734346725e-05
+    },
+    "ts_pe_peaking": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "ts_valid": {
+      "train": 0.0,
+      "validation": 0.0,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "q_cyl": {
+      "train": 0.0005699998604081975,
+      "validation": 0.0006008014168464717,
+      "diii_d_public_test": 0.0004447685393490864,
+      "mast_public_test": 0.00018820123054650743
+    },
+    "ip_frac": {
+      "train": 0.02153513758323161,
+      "validation": 0.02186394721306508,
+      "diii_d_public_test": 0.02076965644216199,
+      "mast_public_test": 0.020513934129569308
+    },
+    "ip_rate_rel": {
+      "train": 0.0061559984924085326,
+      "validation": 0.006122950091687521,
+      "diii_d_public_test": 0.00586473864676586,
+      "mast_public_test": 0.07326818675352877
+    },
+    "resistive_age": {
+      "train": 0.0004536733582840755,
+      "validation": 0.001609102925119246,
+      "diii_d_public_test": 2.068690880693425e-05,
+      "mast_public_test": 0.0
+    },
+    "shafranov_lambda": {
+      "train": 7.755100141608128e-06,
+      "validation": 5.224360146491058e-06,
+      "diii_d_public_test": 0.0,
+      "mast_public_test": 0.0
+    },
+    "ohmic_flux_used": {
+      "train": 0.0003419999162449185,
+      "validation": 0.00028211544791051715,
+      "diii_d_public_test": 0.0003516774497178823,
+      "mast_public_test": 0.0023597538906985163
+    },
+    "greenwald_frac": {
+      "train": 6.66938612178299e-05,
+      "validation": 2.0897440585964234e-05,
+      "diii_d_public_test": 1.0343454403467125e-05,
+      "mast_public_test": 0.0001737242128121607
+    }
+  },
+  "x12": {
+    "n_frames": 200000,
+    "coil_features": {
+      "n_pairs": 465,
+      "median_abs_r": 0.3455148087922433,
+      "max_abs_r": 0.9952567480483504,
+      "max_pair": [
+        "coil_pt_16",
+        "coil_pt_20"
+      ],
+      "with_ip": {
+        "ip__mean": {
+          "median_abs_r": 0.045050798249766176,
+          "max_abs_r": 0.15435085964226544,
+          "max_column": "coil_c11"
+        },
+        "abs_ip": {
+          "median_abs_r": 0.17697734005260382,
+          "max_abs_r": 0.43029789412856184,
+          "max_column": "coil_pt_20"
+        }
+      }
+    },
+    "raw_currents": {
+      "n_pairs": 171,
+      "median_abs_r": 0.5317377076443143,
+      "max_abs_r": 0.9609419986135104,
+      "max_pair": [
+        "magnetics_F1A__mean",
+        "magnetics_F1B__mean"
+      ],
+      "with_ip": {
+        "ip__mean": {
+          "median_abs_r": 0.7951245814001177,
+          "max_abs_r": 0.9415937895271901,
+          "max_column": "magnetics_F6A__mean"
+        },
+        "abs_ip": {
+          "median_abs_r": 0.27315796294837735,
+          "max_abs_r": 0.5169817196520632,
+          "max_column": "sol__mean"
+        }
+      }
+    }
+  },
+  "x14": {
+    "all": {
+      "train": {
+        "n": 1225650,
+        "slope": 2.9640906240358023,
+        "intercept": 0.47345591923954405,
+        "r": 0.7355222867768622,
+        "residual_std": 0.22850778860302348,
+        "median_offset_from_train_line": -0.00629959713476369
+      },
+      "diii_d_public_test": {
+        "n": 184050,
+        "slope": 2.8785440949203522,
+        "intercept": 0.47341209849940086,
+        "r": 0.730098135912108,
+        "residual_std": 0.2229129527536743,
+        "median_offset_from_train_line": -0.014460965514280666
+      },
+      "mast_public_test": {
+        "n": 65972,
+        "slope": 1.5356420717011168,
+        "intercept": 0.4655349979695947,
+        "r": 0.6065827606883086,
+        "residual_std": 0.10910441549297513,
+        "median_offset_from_train_line": -0.1744213285175803
+      }
+    },
+    "flat_top": {
+      "train": {
+        "n": 956349,
+        "slope": 3.0431175842641065,
+        "intercept": 0.43630867901855647,
+        "r": 0.7462273945033836,
+        "residual_std": 0.22174959054190937,
+        "median_offset_from_train_line": -0.00033444413380068205
+      },
+      "diii_d_public_test": {
+        "n": 142764,
+        "slope": 2.9728114311229654,
+        "intercept": 0.4331333934889385,
+        "r": 0.7378534002544992,
+        "residual_std": 0.2143870623443484,
+        "median_offset_from_train_line": -0.011388680025656961
+      },
+      "mast_public_test": {
+        "n": 49590,
+        "slope": 1.9603739238777598,
+        "intercept": 0.41770394510938147,
+        "r": 0.7149361689088725,
+        "residual_std": 0.09228303917475249,
+        "median_offset_from_train_line": -0.15072057984992004
+      }
+    }
+  },
+  "x15": {
+    "bands": [
+      {
+        "quantity": "ip__rate50 (kA/s)",
+        "machine": "DIII-D train",
+        "n": 1289474,
+        "q01": -1333.0322961425782,
+        "q50": 16.826584815979004,
+        "q99": 1243.5481604003908,
+        "band_width": 2576.580456542969,
+        "width_over_reference": 1.0
+      },
+      {
+        "quantity": "ip__rate50 (kA/s)",
+        "machine": "DIII-D test",
+        "n": 193359,
+        "q01": -1273.3849243164063,
+        "q50": 17.248003005981445,
+        "q99": 1217.6910327148496,
+        "band_width": 2491.0759570312557,
+        "width_over_reference": 0.9668147372248427
+      },
+      {
+        "quantity": "ip__rate50 (kA/s)",
+        "machine": "MAST",
+        "n": 69075,
+        "q01": -19076.3426171875,
+        "q50": -5.52664852142334,
+        "q99": 6057.824150390622,
+        "band_width": 25134.16676757812,
+        "width_over_reference": 9.754854230828466
+      },
+      {
+        "quantity": "ip_rate_rel",
+        "machine": "DIII-D train",
+        "n": 1283331,
+        "q01": -9.286634922027588,
+        "q50": 0.10485577583312988,
+        "q99": 7.319362211227416,
+        "band_width": 16.605997133255002,
+        "width_over_reference": 1.0
+      },
+      {
+        "quantity": "ip_rate_rel",
+        "machine": "DIII-D test",
+        "n": 192688,
+        "q01": -8.872314310073852,
+        "q50": 0.11325764656066895,
+        "q99": 7.0432293987274175,
+        "band_width": 15.91554370880127,
+        "width_over_reference": 0.958421441427866
+      },
+      {
+        "quantity": "ip_rate_rel",
+        "machine": "MAST",
+        "n": 69023,
+        "q01": -56.418067092895505,
+        "q50": -0.018098141998052597,
+        "q99": 14.989346675872795,
+        "band_width": 71.4074137687683,
+        "width_over_reference": 4.300097922199958
+      },
+      {
+        "quantity": "time since the Ip rise (s)",
+        "machine": "DIII-D train",
+        "n": 1289474,
+        "q01": 0.24869232177734374,
+        "q50": 2.632024841308594,
+        "q99": 6.547202192382812,
+        "band_width": 6.298509870605469,
+        "width_over_reference": 1.0
+      },
+      {
+        "quantity": "time since the Ip rise (s)",
+        "machine": "DIII-D test",
+        "n": 193359,
+        "q01": 0.25734394775390623,
+        "q50": 2.6250999999999998,
+        "q99": 6.581843239746103,
+        "band_width": 6.324499291992197,
+        "width_over_reference": 1.0041262809649658
+      },
+      {
+        "quantity": "time since the Ip rise (s)",
+        "machine": "MAST",
+        "n": 69075,
+        "q01": 0.07300001084804535,
+        "q50": 0.24750030040740967,
+        "q99": 0.5286000061035157,
+        "band_width": 0.4555999952554703,
+        "width_over_reference": 0.07233456874961981
+      },
+      {
+        "quantity": "resistive_age",
+        "machine": "DIII-D train",
+        "n": 1283338,
+        "q01": 0.15264759197831154,
+        "q50": 0.8051488995552063,
+        "q99": 2.804346418380735,
+        "band_width": 2.6516988264024235,
+        "width_over_reference": 1.0
+      },
+      {
+        "quantity": "resistive_age",
+        "machine": "DIII-D test",
+        "n": 192688,
+        "q01": 0.1526123456656933,
+        "q50": 0.7992347776889801,
+        "q99": 2.4724862837791446,
+        "band_width": 2.319873938113451,
+        "width_over_reference": 0.8748632819892441
+      },
+      {
+        "quantity": "resistive_age",
+        "machine": "MAST",
+        "n": 69023,
+        "q01": 0.060103337094187734,
+        "q50": 0.18081769347190857,
+        "q99": 0.6271026968955993,
+        "band_width": 0.5669993598014116,
+        "width_over_reference": 0.2138249465421619
+      }
+    ],
+    "ip_rise_ms": {
+      "DIII-D train": {
+        "n": 5821,
+        "q01": 8.07208251953125,
+        "q25": 13.57330322265625,
+        "q50": 14.900000000000006,
+        "q75": 16.74981689453125,
+        "q99": 44.78131103515634,
+        "min": -118.26019287109375,
+        "max": 130.73101806640625
+      },
+      "DIII-D test": {
+        "n": 874,
+        "q01": 8.5962158203125,
+        "q25": 13.82135009765625,
+        "q50": 14.900000000000006,
+        "q75": 16.60052490234375,
+        "q99": 35.12624511718746,
+        "min": -68.08148193359375,
+        "max": 73.97613525390625
+      },
+      "MAST": {
+        "n": 1206,
+        "q01": 1.399993896484375,
+        "q25": 1.9998550415039062,
+        "q50": 2.199888229370117,
+        "q75": 2.599954605102539,
+        "q99": 13.499617576599121,
+        "min": -3.200009346008301,
+        "max": 15.999987602233887
+      }
+    },
+    "changing_current": {
+      "DIII-D train": {
+        "n_frames": 1289474,
+        "share_off_flat_top": 0.2223813741106839,
+        "n_rate_finite": 1283331,
+        "share_abs_rate_rel_above_0.1": 0.870395089030032,
+        "share_abs_rate_rel_above_0.3": 0.6869918984268283,
+        "share_abs_rate_rel_above_1": 0.39215370001971434
+      },
+      "DIII-D test": {
+        "n_frames": 193359,
+        "share_off_flat_top": 0.22664577288877166,
+        "n_rate_finite": 192688,
+        "share_abs_rate_rel_above_0.1": 0.8744550776384622,
+        "share_abs_rate_rel_above_0.3": 0.6928350494062941,
+        "share_abs_rate_rel_above_1": 0.3889552021921448
+      },
+      "MAST": {
+        "n_frames": 69075,
+        "share_off_flat_top": 0.2484256243213898,
+        "n_rate_finite": 69023,
+        "share_abs_rate_rel_above_0.1": 0.9389044231632934,
+        "share_abs_rate_rel_above_0.3": 0.8244787969227648,
+        "share_abs_rate_rel_above_1": 0.5949031482259537
+      }
+    },
+    "thresholds": [
+      0.1,
+      0.3,
+      1.0
+    ]
+  },
+  "checks": [
+    {
+      "id": "X1",
+      "title": "Rows and keys",
+      "status": "pass",
+      "summary": "rows and keys equal the frame table on every split (diii_d_train 1559340, diii_d_public_test 193359, mast_public_test 69075); build record matches; configuration unchanged since the build"
+    },
+    {
+      "id": "X2",
+      "title": "Inputs only",
+      "status": "pass",
+      "summary": "41 distinct columns read; every one is in input_columns(machine, include_flags=True) or is time_ms"
+    },
+    {
+      "id": "X3",
+      "title": "Completeness",
+      "status": "review",
+      "summary": "lowest finite share: diii_d_train ts_beta_p 0.9852; diii_d_public_test ts_beta_p 0.9869; mast_public_test ts_beta_p 0.9910. Frames with Ip missing or below 20 kA: diii_d_train 7, diii_d_public_test 0, mast_public_test 0"
+    },
+    {
+      "id": "X4",
+      "title": "Layout",
+      "status": "pass",
+      "summary": "22 points, symmetric True; smallest clearance DIII-D 0.279 m, MAST 0.199 m (rule 0.15 m); failing points: 0"
+    },
+    {
+      "id": "X5",
+      "title": "Mirror",
+      "status": "pass",
+      "summary": "mirroring twice returns the input on 3 of 3 splits; mirrored points against points from A and B exchanged, 4522 frames of 20 training shots: median 0.0021, 95th percentile 0.0041, max 0.0051 of the pattern's range (F51 expects about 0.02; pass at or below 0.05 at the 95th percentile)"
+    },
+    {
+      "id": "X6",
+      "title": "Current direction",
+      "status": "review",
+      "summary": "1182807 positive-Ip and 106066 negative-Ip training frames; share of negative-Ip values inside the positive band from 0.960 to 0.999; largest median shift coil_c11 -0.54 interquartile ranges"
+    },
+    {
+      "id": "X7",
+      "title": "Force-balance sign",
+      "status": "pass",
+      "summary": "median 4 pi (R0/a0) coil_c10 on flat-top frames: DIII-D -2.259 (K9 -2.096), MAST -1.485 (K9 -1.351); signs match, order matches"
+    },
+    {
+      "id": "X8",
+      "title": "Per-feature ranges",
+      "status": "review",
+      "summary": "largest MAST share outside the training band: coil_c20 0.874, coil_pt_12 0.800, coil_pt_11 0.757"
+    },
+    {
+      "id": "X9",
+      "title": "Stretch terms",
+      "status": "review",
+      "summary": "MAST share outside the training band by phase: coil_c20 all 0.874; coil_c02 all 0.693; coil_c20 rising 0.527; coil_c02 rising 0.992; coil_c20 flat_top 0.938; coil_c02 flat_top 0.709; coil_c20 late 0.812; coil_c02 late 0.104"
+    },
+    {
+      "id": "X10",
+      "title": "Combined distance",
+      "status": "review",
+      "summary": "set_a: MAST median 1.03 against validation 0.23, 0.435 of MAST frames beyond the validation 99th percentile; set_b: MAST median 4.43 against validation 0.42, 1.000 of MAST frames beyond the validation 99th percentile"
+    },
+    {
+      "id": "X11",
+      "title": "Extremes after scaling",
+      "status": "review",
+      "summary": "largest share of scaled values beyond 10: train ip_frac 0.0215; validation ip_frac 0.0219; diii_d_public_test ip_frac 0.0208; mast_public_test ip_rate_rel 0.0733"
+    },
+    {
+      "id": "X12",
+      "title": "Shared factor removed",
+      "status": "review",
+      "summary": "200000 training frames. Largest |r| with Ip (signed, magnitude): coil features 0.154, 0.430; raw currents 0.942, 0.517. Median |r| between columns: coil features 0.346, raw currents 0.532"
+    },
+    {
+      "id": "X13",
+      "title": "Pattern preserved",
+      "status": "review",
+      "summary": "shown in notebook 06, section 3"
+    },
+    {
+      "id": "X14",
+      "title": "Thomson against force balance",
+      "status": "review",
+      "summary": "shafranov_lambda against ts_beta_p, slope (r): train 2.964 (0.736), diii_d_public_test 2.879 (0.730), mast_public_test 1.536 (0.607); median offset from the training line: diii_d_public_test -0.014, mast_public_test -0.174"
+    },
+    {
+      "id": "X15",
+      "title": "Timescales",
+      "status": "review",
+      "summary": "MAST band width over DIII-D training: ip__rate50 9.75, ip_rate_rel 4.30; time since rise 0.07, resistive_age 0.21. Frames off the flat-top: DIII-D train 0.222, DIII-D test 0.227, MAST 0.248. Median ip_rise_ms: DIII-D train 14.9, DIII-D test 14.9, MAST 2.2"
+    }
+  ],
+  "timestamp": "2026-10-13T16:19:03+00:00",
+  "repo_commit": "877cceb0f645eb78fafe6275eb918cf7ff851c20",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "",
+  "arguments": {
+    "config": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/features_v1.yaml",
+    "split": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+    "feature_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/features",
+    "report_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/features",
+    "table_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table",
+    "green_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/green",
+    "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
+    "k9": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/coil_flux/reference_ratios.parquet",
+    "nn_train_frames": 200000,
+    "nn_eval_frames": 5000,
+    "corr_frames": 200000,
+    "mirror_shots": 20,
+    "rate_thresholds": [
+      0.1,
+      0.3,
+      1.0
+    ],
+    "seed": 0
+  },
+  "runtime_s": 28.927242755889893,
+  "python": "3.13.15",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5"
+}

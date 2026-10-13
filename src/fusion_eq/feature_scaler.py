@@ -88,7 +88,26 @@ class RobustScaler:
             ValueError: for a zero interquartile range or a column without finite values.
         """
         columns = tuple(c for c in config.all_columns() if c in original.columns) if columns is None else tuple(columns)
-        rules = cls._rules(config, columns)
+        return cls.fit_rules(original, mirrored, cls._rules(config, columns), source_machine)
+
+    @classmethod
+    def fit_rules(cls, original: pd.DataFrame, mirrored: pd.DataFrame, rules: dict[str, dict],
+                  source_machine: str = "DIII-D") -> "RobustScaler":
+        """Fits the source statistics on originals and mirrors together, with explicit rules.
+
+        Serves in-memory variants of a configuration (columns outside it, changed scaling).
+
+        Args:
+            original: Feature table of the training frames.
+            mirrored: Mirror of the same table.
+            rules: Column to ``{"scale", "scale_group", "scale_with", "transform"}``, in the
+                order of the scaler's columns.
+
+        Raises:
+            ValueError: for a zero interquartile range or a column without finite values.
+        """
+        columns = tuple(rules)
+        rules = {c: dict(rules[c]) for c in columns}
         source: dict[str, list[float]] = {}
         for group, members in cls._groups(rules, columns).items():
             transform = TRANSFORM_FUNCTIONS[rules[members[0]]["transform"]]

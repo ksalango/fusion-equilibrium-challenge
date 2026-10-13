@@ -51,7 +51,7 @@ DEFAULT_K9 = dataset.REPO_ROOT / "reports" / "coil_flux" / "reference_ratios.par
 K9_FALLBACK = {"DIII-D": -2.09, "MAST": -1.35}
 GROUPS = ("train", "validation", "diii_d_public_test", "mast_public_test")
 GROUP_MACHINE = {"train": "DIII-D", "validation": "DIII-D", "diii_d_public_test": "DIII-D", "mast_public_test": "MAST"}
-COMPARED = ("validation", "diii_d_public_test", "mast_public_test")
+COMPARED = fc.COMPARED_SPLITS
 TERM_COLUMNS = [f"coil_{t}" for t in TERM_NAMES]
 STRETCH_COLUMNS = ("coil_c20", "coil_c02")
 
@@ -218,38 +218,36 @@ def check_x10(data: dict[str, pd.DataFrame], scaled: dict[str, np.ndarray], scal
               config: fe.FeatureConfig, args) -> tuple[fc.Check, dict, pd.DataFrame]:
     columns = list(scaler.columns)
     specs = config.column_specs()
-    train_rows = fc.sample_rows(len(data["train"]), args.nn_train_frames, args.seed)
+    train_rows, eval_rows = fc.x10_samples(len(data["train"]), {g: len(data[g]) for g in COMPARED},
+                                           args.nn_train_frames, args.nn_eval_frames, args.seed)
     train_sample = data["train"].iloc[train_rows]
     mirrored = scaler.transform(fe.mirror_features(train_sample, config), "DIII-D")
     parts = []
     for set_name in config.sets:
         set_columns = config.set_columns(set_name)
         idx = [columns.index(c) for c in set_columns]
-        groups: dict[str, list[int]] = {}
-        for j, c in enumerate(set_columns):
-            groups.setdefault(specs[c].group, []).append(j)
+        groups = fc.column_groups(set_columns, {c: specs[c].group for c in set_columns})
         reference = scaled["train"][train_rows][:, idx]
         with_mirrors = np.vstack([reference, mirrored[:, idx]])
-        for k, group in enumerate(COMPARED):
-            rows = fc.sample_rows(len(data[group]), args.nn_eval_frames, args.seed + 1 + k)
-            queries = scaled[group][rows][:, idx]
-            distance, nearest = fc.nearest_neighbours(reference, queries)
-            distance_m, _ = fc.nearest_neighbours(with_mirrors, queries)
-            shares = fc.group_shares(reference, queries, nearest, groups)
+        queries = {g: scaled[g][eval_rows[g]][:, idx] for g in COMPARED}
+        distances = fc.combined_distance(reference, queries, groups)
+        for group in COMPARED:
+            rows, d = eval_rows[group], distances.loc[distances["split"] == group]
+            nearest = d["nearest"].to_numpy()
+            distance_m, _ = fc.nearest_neighbours(with_mirrors, queries[group])
             part = pd.DataFrame({"set": set_name, "split": group, "shot": data[group]["shot"].to_numpy()[rows],
                                  "frame": data[group]["frame"].to_numpy()[rows], "phase": data[group]["phase"].to_numpy()[rows],
-                                 "distance": distance, "distance_with_mirrors": distance_m,
+                                 "distance": d["distance"].to_numpy(), "distance_with_mirrors": distance_m,
                                  "nn_shot": train_sample["shot"].to_numpy()[nearest],
                                  "nn_frame": train_sample["frame"].to_numpy()[nearest]})
-            for g, v in shares.items():
-                part[f"share_{g}"] = v
+            for c in (c for c in d.columns if c.startswith("share_")):
+                part[c] = d[c].to_numpy()
             parts.append(part)
         log(f"  X10 {set_name}: nearest neighbours of {len(COMPARED)} splits among {len(reference)} training frames")
     table = pd.concat(parts, ignore_index=True)
     summary_table = fc.distance_summary(table)
     mirrors = fc.distance_summary(table.assign(distance=table["distance_with_mirrors"]))
-    group_cols = [c for c in table.columns if c.startswith("share_")]
-    groups_median = table.groupby(["set", "split"], sort=False)[group_cols].median().reset_index()
+    groups_median = fc.group_share_medians(table)
     mast = summary_table.loc[summary_table["split"] == "mast_public_test"]
     summary = "; ".join(f"{r.set}: MAST median {r.p50:.2f} against validation "
                         f"{summary_table.loc[(summary_table['set'] == r.set) & (summary_table['split'] == 'validation'), 'p50'].iloc[0]:.2f}, "

@@ -158,8 +158,17 @@ def test_notebook_runs_on_the_synthetic_outputs(ws, profiled, linear):
         "PLOT_FRAMES = 1000", "SCATTER_FRAMES = 1000", "SEED = 0"])
     nbclient.NotebookClient(nb, timeout=300, kernel_name="python3", resources={"metadata": {"path": str(REPO_ROOT)}}).execute()
     headings = [c.source.splitlines()[0] for c in nb.cells if c.cell_type == "markdown" and c.source.startswith("## ")]
-    assert [h.split(".")[0] for h in headings] == [f"## {i}" for i in range(1, 11)]
+    assert [h.split(".")[0] for h in headings] == [*(f"## {i}" for i in range(1, 7)), "## 6b", *(f"## {i}" for i in range(7, 11))]
     text = "\n".join(str(o.get("data", {}).get("text/plain", "")) + o.get("text", "")
                      for c in nb.cells if c.cell_type == "code" for o in c.outputs)
     assert "X15" in text and "features_set_a" in text and "not found" not in text
     assert not any(o.get("output_type") == "error" for c in nb.cells if c.cell_type == "code" for o in c.outputs)
+    # Section 6b: the tables are printed as Markdown, and the in-memory refit of the version-1
+    # sets reproduces scaler.json and the X10 distances of profile.json exactly.
+    assert "| quantity | phase | split |" in text and "| variant | split | median | median, v1 |" in text
+    assert "shaping even under the mirror: True" in text
+    recomputed = [line for line in text.splitlines() if line.startswith("| set_") and "version 1 recomputed" in line]
+    assert len(recomputed) == 2 + 2 * 3
+    assert all(cell.strip() == "0" for line in recomputed for cell in line.strip("|").split("|")[-1:])
+    profile_rows = [line for line in recomputed if "DIII-D" in line or "MAST" in line]
+    assert len(profile_rows) == 6 and all(c.strip() == "0" for line in profile_rows for c in line.strip("|").split("|")[2:])

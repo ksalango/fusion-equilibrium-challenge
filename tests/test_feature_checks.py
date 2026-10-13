@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import numpy as np
@@ -23,6 +24,12 @@ def test_check_rejects_an_unknown_status_and_renders_a_table():
     text = fc.check_table_markdown([fc.Check("X1", "Rows and keys", "pass", "a | b"), fc.Check("X3", "Completeness", "review", "c")])
     lines = text.splitlines()
     assert len(lines) == 4 and lines[2] == "| X1 | Rows and keys | pass | a / b |" and lines[3].startswith("| X3 |")
+
+
+def test_markdown_table_formats_numbers_and_escapes_pipes():
+    table = pd.DataFrame({"name": ["a|b", "c"], "n": [3, 4], "x": [0.000123456, np.nan], "ok": [True, False]})
+    lines = fc.markdown_table(table, digits=3).splitlines()
+    assert lines == ["| name | n | x | ok |", "| --- | --- | --- | --- |", "| a/b | 3 | 0.000123 | True |", "| c | 4 | nan | False |"]
 
 
 def test_frame_phases_follow_phase_of_frame_by_frame():
@@ -122,6 +129,32 @@ def test_sample_rows_is_seeded_sorted_and_complete_when_small():
     assert np.array_equal(fc.sample_rows(10, 50, 0), np.arange(10))
 
 
+def test_x10_samples_follow_the_seed_rule_of_the_profile():
+    train, compared = fc.x10_samples(1000, {"validation": 300, "diii_d_public_test": 200, "mast_public_test": 5}, 100, 20, 7)
+    assert np.array_equal(train, fc.sample_rows(1000, 100, 7))
+    assert np.array_equal(compared["validation"], fc.sample_rows(300, 20, 8))
+    assert np.array_equal(compared["diii_d_public_test"], fc.sample_rows(200, 20, 9))
+    assert np.array_equal(compared["mast_public_test"], np.arange(5))
+    assert fc.column_groups(["a", "b", "c", "d"], {"a": "g2", "b": "g1", "c": "g2", "d": "g3"}) == {"g2": [0, 2], "g1": [1], "g3": [3]}
+
+
+def test_combined_distance_and_group_share_medians():
+    rng = np.random.default_rng(4)
+    reference = rng.normal(size=(200, 4))
+    queries = {"validation": rng.normal(size=(15, 4)), "mast_public_test": rng.normal(size=(9, 4)) + 2.0}
+    groups = {"g1": [0, 1], "g2": [2, 3]}
+    table = fc.combined_distance(reference, queries, groups)
+    assert table["split"].tolist() == ["validation"] * 15 + ["mast_public_test"] * 9
+    for split, q in queries.items():
+        rows = table[table["split"] == split]
+        distance, nearest = fc.nearest_neighbours(reference, q)
+        assert np.array_equal(rows["distance"].to_numpy(), distance) and np.array_equal(rows["nearest"].to_numpy(), nearest)
+        assert np.allclose(rows["share_g1"].to_numpy(), fc.group_shares(reference, q, nearest, groups)["g1"])
+    medians = fc.group_share_medians(table.assign(set="v"))
+    assert medians["split"].tolist() == ["validation", "mast_public_test"]
+    assert medians.loc[1, "share_g2"] == pytest.approx(table.loc[table["split"] == "mast_public_test", "share_g2"].median())
+
+
 def test_distance_summary_reports_the_share_beyond_the_validation_99th_percentile():
     val = np.arange(1.0, 101.0)
     table = pd.DataFrame({"set": "set_a", "split": ["validation"] * 100 + ["mast"] * 4,
@@ -176,6 +209,83 @@ def test_bz_ratio_from_c10_and_the_force_balance_check():
     assert empty["status"] == "fail" and not empty["order_matches"]
     missing = fc.force_balance_check({"DIII-D": np.array([-2.0])}, k9)
     assert missing["status"] == "fail"
+
+
+# ------------------------------------------------------------------------- stretch terms
+@pytest.mark.parametrize("cfg", [DIII_D, MAST], ids=["DIII-D", "MAST"])
+def test_current_free_fields_give_a_small_vacuum_residual(cfg):
+    r0, a0 = cfg.major_radius.value, cfg.minor_radius.value
+    # psi = R^2 is quadratic in x: the order-3 fit recovers it exactly and the relation holds.
+    quadratic = pd.DataFrame([fc.fitted_terms(CONFIG.layout, lambda r, z: r ** 2, r0, a0)])
+    assert quadratic["coil_c20"].iloc[0] == pytest.approx(a0 ** 2) and quadratic["coil_c10"].iloc[0] == pytest.approx(2 * r0 * a0)
+    assert abs(fc.vacuum_residual(quadratic, cfg)[0]) < 1e-12 * abs(quadratic["coil_c20"].iloc[0])
+    # psi = R^4 - 4 R^2 Z^2 is current-free (psi_RR - psi_R / R + psi_ZZ = 0) with a quartic part
+    # a0^4 (x^4 - 4 x^2 y^2) that the order-3 fit cannot hold. Its terms up to order 3 satisfy the
+    # relation, so the residual is exactly what the fit takes in from the quartic part.
+    quartic = pd.DataFrame([fc.fitted_terms(CONFIG.layout, lambda r, z: r ** 4 - 4 * r ** 2 * z ** 2, r0, a0)])
+    alias = pd.DataFrame([fc.fitted_terms(
+        CONFIG.layout, lambda r, z: ((r - r0) ** 4 - 4 * (r - r0) ** 2 * z ** 2), r0, a0)])
+    residual = fc.vacuum_residual(quartic, cfg)[0]
+    assert residual == pytest.approx(fc.vacuum_residual(alias, cfg)[0], rel=1e-9, abs=1e-12)
+    assert abs(residual) < 0.1 * abs(quartic["coil_c20"].iloc[0])
+    # Taylor coefficients of the quartic field: c10 = 4 R0^3 a0, c20 = 6 R0^2 a0^2, c02 = -4 R0^2 a0^2.
+    taylor = pd.DataFrame([{"coil_c10": 4 * r0 ** 3 * a0, "coil_c20": 6 * r0 ** 2 * a0 ** 2, "coil_c02": -4 * r0 ** 2 * a0 ** 2}])
+    assert abs(fc.vacuum_residual(taylor, cfg)[0]) < 1e-12 * taylor["coil_c20"].iloc[0]
+
+
+def test_coil_flux_residual_vanishes_as_the_layout_shrinks():
+    # The coil flux is current-free at the layout points, so the residual comes from orders 4
+    # and above only: relative to coil_c20 it falls as a0^2. A field with a source at the
+    # reference point would leave a constant ratio instead.
+    frames = make_frames(n_shots=2, n_frames=6)
+    r0 = DIII_D.major_radius.value
+    sizes = []
+    for a0 in DIII_D.minor_radius.value / np.array([1.0, 2.0, 4.0, 8.0]):
+        built = fe.build_features(frames, "DIII-D", CONFIG, resources(point_table(a0=a0), a0=a0))
+        cfg = dataclasses.replace(DIII_D, minor_radius=dataclasses.replace(DIII_D.minor_radius, value=float(a0)))
+        residual = fc.vacuum_residual(built, cfg)
+        assert np.isfinite(residual).all()
+        sizes.append(fc.relative_size(residual, built["coil_c20"]))
+    assert all(a > b for a, b in zip(sizes, sizes[1:]))
+    assert sizes[-1] < 0.03 and sizes[-2] / sizes[-1] > 3.0
+
+
+def test_a_known_quadrupole_gives_the_expected_shaping():
+    r0, a0 = DIII_D.major_radius.value, DIII_D.minor_radius.value
+    q, b = 0.4, -0.15
+
+    def psi(r, z):
+        x, y = (r - r0) / a0, z / a0
+        return 0.3 * x + q * (y ** 2 - x ** 2) + b * (x ** 2 + y ** 2) + 0.05 * x * y + 0.02 * x ** 3 - 0.07 * y ** 3
+
+    terms = pd.DataFrame([fc.fitted_terms(CONFIG.layout, psi, r0, a0)])
+    assert terms["coil_c20"].iloc[0] == pytest.approx(b - q) and terms["coil_c02"].iloc[0] == pytest.approx(b + q)
+    assert fc.shaping(terms)[0] == pytest.approx(q)
+    assert fc.vacuum_residual(terms, DIII_D)[0] == pytest.approx(2 * b - a0 / (2 * r0) * 0.3)
+    out = fc.stretch_quantities(terms.set_index(pd.Index([7])), DIII_D)
+    assert list(out.columns) == ["vacuum_residual", "shaping"] and out.index.tolist() == [7]
+
+
+def test_shaping_is_even_under_the_mirror():
+    built = fe.build_features(make_frames(n_shots=2, n_frames=6), "DIII-D", CONFIG, resources(point_table()))
+    mirrored = fe.mirror_features(built, CONFIG)
+    assert np.array_equal(fc.shaping(mirrored), fc.shaping(built), equal_nan=True)
+    assert np.array_equal(fc.vacuum_residual(mirrored, DIII_D), fc.vacuum_residual(built, DIII_D), equal_nan=True)
+
+
+def test_relative_size_and_variant_rules():
+    assert fc.relative_size([0.1, -0.2, np.nan, 0.3], [-1.0, 2.0, 3.0]) == pytest.approx(0.2 / 2.0)
+    assert np.isnan(fc.relative_size([1.0], [0.0, 0.0]))
+    columns = ["coil_c10", "shaping", "ts_valid", "ip_frac"]
+    rules = fc.variant_rules(CONFIG, columns, unscaled=["ip_frac"], extra={"shaping": {}})
+    assert list(rules) == columns
+    assert rules["shaping"] == fc.ROBUST_RULE and rules["coil_c10"]["scale"] == "robust"
+    assert rules["ip_frac"]["scale"] == "none" and rules["ts_valid"]["scale"] == "none"
+    assert fc.variant_rules(CONFIG, ["coil_pt_00"])["coil_pt_00"]["scale_group"] == "coil_pattern"
+    with pytest.raises(KeyError, match="neither configured"):
+        fc.variant_rules(CONFIG, ["shaping"])
+    with pytest.raises(KeyError, match="unscaled"):
+        fc.variant_rules(CONFIG, ["coil_c10"], unscaled=["ip_frac"])
 
 
 # -------------------------------------------------------------------------------- lines
