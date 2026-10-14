@@ -322,7 +322,7 @@ No MAST label is read.
 | Id | Check | Content |
 | --- | --- | --- |
 | Y8 | Conservation | Pass if placement on MAST conserves the total of the mean share and of 1,000 reconstructed training shares to 1e-10, after the weight outside the MAST grid, which is reported |
-| Y9 | Response | Pass if, on both machines, the response to a unit current in one cell agrees with the coil Green's function for a filament at that node to 1e-3 at nodes more than five cells away, and the response is symmetric under a flip in Z |
+| Y9 | Response | Rule of F89 (the response is a discrete solver). Pass if, on both machines, the response to a unit current in one cell agrees with the coil Green's function for a filament at that node, beyond five cells to 2e-2 (DIII-D) and 1e-1 (MAST) of the largest value there and beyond ten cells to 5e-3 and 3e-2 per node; the response is symmetric in its two arguments to 1e-3 between source cells outside the first three interior rings (the value over all source cells reported beside it) and exact under a flip in Z; and the share of the fit sample's absolute current in the first three interior rings of each grid is at most 1e-4 |
 | Y10 | Where the current lands | Review. The mean share and the envelope holding 99 percent of the training shares, placed on MAST and reported in metres: inner and outer radius, height, centroid; distance to the nearest MAST coil element and to the grid edge; coil elements inside the envelope |
 | Y11 | Sensitivity to the constants | Review. Y10's outputs with the MAST R0 and a0 each moved by plus and minus 5 percent, and with the alternative published nominal set R0 0.70 m, a0 0.50 m (Morris 1998) |
 

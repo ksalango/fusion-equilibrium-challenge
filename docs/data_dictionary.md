@@ -534,3 +534,64 @@ Notes.
   hash must equal the grid table's.
 - Mirror: the up-down mirror of a frame exchanges each coil point with its partner (x, -y), changes the
   sign of the odd terms and leaves every other feature unchanged. No coil current is swapped.
+
+## 9. Targets
+
+Version 1, built by `scripts/build_targets.py --config configs/target_v1.yaml` (`fusion_eq.target_build`,
+specification in `docs/TARGET.md`) from the DIII-D training split only; MAST equilibrium labels are never
+read. Outputs under `../data/processed/targets/v1/`: one Parquet file per list of the split file
+(`train.parquet`, `validation.parquet`, `local_test.parquet`; `working_train` and `working_validation` with
+`--lists working`), keyed on `shot` and `frame` (the frame table's rows at the build's stride, in its
+order), float columns as float32; the fitted objects; and `build.json` (configuration and its hash, machine
+constants with their verified status, the fit sample, rows per list, ridge scores, SHA-256 of every object,
+runtime).
+
+The map the targets rebuild, in the stored frame:
+psi_stored = k sign(Ip) (psi_coil + Ip G P (s_mean + B c) + r), with k = -1 on DIII-D and +1 on MAST
+(`targets.PSI_SIGN_RULE_C`), psi_coil the coil flux under the adopted coil model, G the machine's plasma
+response, P the placement of the reference lattice on the machine's grid (identity on DIII-D), s_mean and B
+the mean and components of the current basis, and r the remainder (the ridge's prediction on DIII-D, zero
+on MAST). `current_basis.compose_map` evaluates it.
+
+| Column | Type | Units | Meaning |
+| --- | --- | --- | --- |
+| `shot`, `frame` | str, int32 | | Key, as in the frame table |
+| `ip_ka` | float32 | kA | Signed `ip__mean` of the frame |
+| `phase` | str | | `rising`, `flat_top` or `late` (`coil_scales.phase_of`: flat top at or above 0.9 of the shot's peak Ip, otherwise by the half of the shot) |
+| `boundary_found` | bool | | Whether the scorer finds a boundary in the stored map; without one the share is zero |
+| `share_total` | float32 | | Total of the share s over the grid: masked current over the measured Ip, not rescaled |
+| `share_outside` | float32 | | Share of the absolute current density outside the scorer's boundary (dropped by the mask) |
+| `c_00` to `c_49` | float32 | | Current coefficients, c = B^T (s - s_mean): the plasma model's target. Under the mirror, c times the parity vector p |
+| `recon_error`, `recon_error_mirror` | float32 | | Relative L2 error of the share through the basis, for the frame and for its mirror |
+| `r_00` to `r_09` | float32 | Wb/rad | Coefficients of the remainder in the target frame, sign(Ip) r, on the remainder basis |
+| `flux_range` | float32 | Wb/rad | Largest minus smallest value of the stored map |
+| `remainder_rms_over_range` | float32 | | RMS of the remainder over `flux_range` |
+| `R_axis`, `Z_axis`, `kappa`, `tri_top`, `tri_bot`, `volume`, `li` | float32 | m, m, -, -, -, m^3, - | Shape numbers the scorer derives from the stored map (its reference builder; cached scorer references where they match the list and stride); NaN where the scorer finds them implausible |
+| `passes_filter` | bool | | The frame passes the lighter label filter (`label_filter.lighter_label_filter`) |
+| `filter_impossible_label`, `filter_tf_under_threshold`, `filter_ip_under_fraction_of_peak`, `filter_flagged_shot` | bool | | The filter's rules: a non-finite label, q95 at or below 0 or betaN at or below 0; toroidal field under 50 kA; Ip under 0.1 of the shot's peak; one of the shots `5df1630aa7`, `955c35c962` |
+
+Fitted objects:
+
+| File | Content |
+| --- | --- |
+| `current_basis.npz` | Mean share (even), 50 orthonormal components ordered by variance, their variances and parity vector p (+1 even, -1 odd), the total variance; fitted on 100,000 filter-passing training frames with a boundary (seed 0) and their mirrors, on the reference lattice (DIII-D's grid) |
+| `flux_basis_d3d.npz`, `flux_basis_mast.npz` | phi_mean = G P s_mean and Phi = G P B per machine, Wb/rad per ampere of Ip, with the radii of the placement |
+| `placement_d3d.npz`, `placement_mast.npz` | Separable conservative remap of the reference lattice onto each machine's grid in scaled coordinates x = (R - R0) / a0, y = Z / a0; identity on DIII-D |
+| `remainder_model.npz` | Remainder basis (sign(Ip) r, originals, 20 components fitted, 10 used) and one ridge per rate window, with the default window |
+
+Notes.
+
+- Share: s = J dR dZ mask / Ip with J the current density of psi_plasma = psi_physical - psi_coil (the
+  five-point Delta* stencil) and the mask the scorer's boundary of the stored map. Positive where the
+  current flows with Ip.
+- Remainder ridge: 42 inputs, the `__mean` and a rate of Ip, the solenoid, the toroidal field and the 18
+  F-coils, Ip-signed and standardised. The 10 ms ridge uses the `__rate` columns; the 50 ms ridge uses the
+  `__rate50` columns, and the toroidal field, which has no 50 ms rate in the frame table, keeps its 10 ms
+  `tf__rate`. Both are fitted on the filter-passing training frames; the better one on validation is the
+  default.
+- Mirror: flip of the Z index for the share and every map on the DIII-D grid, c times p for the
+  coefficients, Z_axis changes sign, tri_top and tri_bot exchange (`mirror_share`, `mirror_coeffs`,
+  `mirror_labels`). The remainder's mirror is the flip of the original's; the ridge is not refitted on
+  mirrors.
+- The plasma response carries no current on the grid's border cells; check Y9 guards the share of the fit
+  sample's current in the first three interior rings (F89).

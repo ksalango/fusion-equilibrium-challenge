@@ -10,9 +10,11 @@ Steps:
    pass the lighter label filter; frames without a boundary are replaced from the same
    permutation until the sample is full or the candidates run out. The current basis
    (``current_basis.CurrentBasis``, exact parity, originals and mirrors) and the remainder
-   basis (originals, target frame ``sign(Ip) r``) are fitted on it.
-3. Plasma responses of both machines (cached under ``--response-cache``), the placement of each
-   machine (identity on DIII-D) and the flux bases.
+   basis (originals, target frame ``sign(Ip) r``) are fitted on it. The share of each sample
+   frame's absolute current in the first three interior rings of each machine's grid (the
+   share as it is on DIII-D, placed on MAST) is recorded for the Y9 guard.
+3. Plasma responses of both machines (cached under ``--response-cache``) and the flux bases;
+   the placement of each machine (identity on DIII-D) is made before the fit sample.
 4. One table per list, ``<out>/v<version>/<list>.parquet``, keyed on ``shot`` and ``frame``:
    current coefficients ``c_00`` onward, share total, share outside the boundary, relative
    reconstruction error of the share and of its mirror, remainder coefficients ``r_00``
@@ -44,7 +46,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from fusion_eq import (baseline as bl, current_basis as cb, current_target as ct, dataset, frame_table as ft,
-                       label_filter as lf, lattice as lt, split as sp, target_build as tb, targets)
+                       label_filter as lf, lattice as lt, split as sp, target_build as tb, target_checks as tc, targets)
 from fusion_eq.coil_flux import GreenTable
 from fusion_eq.dataset import default_data_root, run_info
 from fusion_eq.machines import machine_config
@@ -88,12 +90,13 @@ def frame_rows(shot_ids: list[str], columns: list[str], table_dir: Path, stride:
 
 
 def fit_bases(rows: dict[str, pd.DataFrame], keep: dict[str, np.ndarray], config: tb.TargetConfig, args,
-              workers: int) -> tuple[cb.CurrentBasis, bl.FluxBasis, dict]:
+              workers: int, placements: dict) -> tuple[cb.CurrentBasis, bl.FluxBasis, dict]:
     """Current and remainder bases on the fixed-seed sample of filter-passing training frames
-    with a boundary."""
+    with a boundary, and the Y9 ring guard of the sample on each machine's grid."""
     candidates = [(s, i) for s in rows for i in np.flatnonzero(keep[s])]
     order = np.random.default_rng(config.seed).permutation(len(candidates))
     acc_current, acc_remainder = None, bl.BasisAccumulator()
+    rings = {m: [] for m in tb.MACHINES}
     taken, collected, dropped = 0, 0, 0
     while collected < config.fit_frames and taken < len(order):
         batch = order[taken:taken + (config.fit_frames - collected)]
@@ -110,6 +113,8 @@ def fit_bases(rows: dict[str, pd.DataFrame], keep: dict[str, np.ndarray], config
                 acc_current = acc_current or cb.CurrentBasisAccumulator(result["share"].shape[1:])
                 acc_current.add(result["share"][found])
                 acc_remainder.add(result["remainder"][found])
+                for m in tb.MACHINES:
+                    rings[m].append(tc.ring_shares(placements[m].apply(result["share"][found])))
             collected += int(found.sum())
             dropped += int((~found).sum())
         log(f"  fit sample: {collected} frames with a boundary, {dropped} without, {taken} of {len(candidates)} candidates drawn")
@@ -117,30 +122,44 @@ def fit_bases(rows: dict[str, pd.DataFrame], keep: dict[str, np.ndarray], config
         raise SystemExit("no training frame passes the label filter with a boundary")
     current = acc_current.finish(config.n_current)
     remainder = acc_remainder.finish(max(20, config.n_remainder))
+    guard = {m: tc.ring_guard(rings[m]) for m in tb.MACHINES}
+    log("  ring guard: " + ", ".join(f"{m} largest share in the first {g['rings']} interior rings {g['max']:.2e}"
+                                     for m, g in guard.items()))
     return current, remainder, {"n_candidates": len(candidates), "n_drawn": int(taken), "n_frames": int(collected),
-                                "n_without_boundary": int(dropped), "seed": config.seed, "requested": config.fit_frames}
+                                "n_without_boundary": int(dropped), "seed": config.seed, "requested": config.fit_frames,
+                                "border_rings": guard}
 
 
-def flux_objects(current: cb.CurrentBasis, args) -> tuple[dict, dict, dict]:
-    """Responses, placements and flux bases of both machines."""
-    responses, placements, fluxes = {}, {}, {}
+def make_placements(args) -> dict:
+    """Placement of the reference lattice on each machine's grid (identity on DIII-D)."""
     grids = {m: GreenTable.load(args.green_dir / f"green_{machine_config(m).file_prefix.split('_')[0]}.npz") for m in tb.MACHINES}
     reference = lt.reference_lattice(grids["DIII-D"].grid_r, grids["DIII-D"].grid_z)
+    return {m: lt.placement(m, reference, lt.native_lattice(m, grids[m].grid_r, grids[m].grid_z)) for m in tb.MACHINES}
+
+
+def flux_objects(current: cb.CurrentBasis, args, placements: dict) -> tuple[dict, dict]:
+    """Responses and flux bases of both machines."""
+    responses, fluxes = {}, {}
     for m in tb.MACHINES:
         responses[m] = cb.machine_response(m, args.green_dir, args.response_cache)
-        native = lt.native_lattice(m, grids[m].grid_r, grids[m].grid_z)
-        placements[m] = lt.placement(m, reference, native)
         fluxes[m] = cb.flux_basis(m, current, responses[m], placements[m])
         log(f"  {m}: flux basis of {fluxes[m].n_components} components, mean share kept by placement "
             f"{fluxes[m].mean_retained:.12f}, on border cells {fluxes[m].mean_border_weight:.2e}")
-    return responses, placements, fluxes
+    return responses, fluxes
 
 
 def build_table(name: str, rows: dict[str, pd.DataFrame], current: cb.CurrentBasis, remainder: RemainderModel,
-                config: tb.TargetConfig, args, workers: int) -> tuple[pd.DataFrame, dict]:
-    """The target table of one list and its record."""
+                config: tb.TargetConfig, args, workers: int,
+                cons: dict[str, np.ndarray] | None = None) -> tuple[pd.DataFrame, dict]:
+    """The target table of one list and its record.
+
+    Args:
+        cons: Shape numbers per shot; when None they are taken from the cached scorer
+            references of exactly these shots, or computed with the scorer's reference builder.
+    """
     ids = list(rows)
-    cons = tb.cached_shape_numbers(ids, args.split_name, args.stride, args.references_dir) if config.shape_numbers else None
+    if cons is None and config.shape_numbers:
+        cons = tb.cached_shape_numbers(ids, args.split_name, args.stride, args.references_dir)
     items = [(s, rows[s], str(args.data_root), args.split_name, args.stride, str(args.green_dir), str(args.response_cache),
               current, remainder, None if cons is None else cons[s], config.shape_numbers) for s in ids]
     parts = []
@@ -159,6 +178,18 @@ def build_table(name: str, rows: dict[str, pd.DataFrame], current: cb.CurrentBas
               "shape_numbers": ("cached scorer references" if cons is not None else "scorer reference builder")
               if config.shape_numbers else "not built"}
     return table, record
+
+
+def frame_columns(config: tb.TargetConfig, split_name: str, table_dir: Path,
+                  green_d3d: GreenTable) -> tuple[list[str], dict[str, list[str]], list[str]]:
+    """Frame-table columns the build reads (coil currents, Ip, the filter's columns, the ridge
+    inputs of each rate window the table carries), the windows found, and the windows missing."""
+    schema = set(pq.ParquetFile(ft.table_path(split_name, table_dir)).schema_arrow.names)
+    windows = available_windows(schema, config.rate_windows_ms)
+    missing = [w for w in (window_name(ms) for ms in config.rate_windows_ms) if w not in windows]
+    columns = list(dict.fromkeys([*targets.current_columns_of(green_d3d, "DIII-D"), "ip__mean", *lf.FILTER_COLUMNS[1:],
+                                  "ip_over_peak", "n_frames", *(c for cols in windows.values() for c in cols)]))
+    return columns, windows, missing
 
 
 def write_table(table: pd.DataFrame, path: Path) -> None:
@@ -236,11 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     timing = {}
 
     green_d3d = GreenTable.load(args.green_dir / "green_d3d.npz")
-    schema = set(pq.ParquetFile(ft.table_path(args.split_name, args.table_dir)).schema_arrow.names)
-    windows = available_windows(schema, config.rate_windows_ms)
-    missing = [w for w in (window_name(ms) for ms in config.rate_windows_ms) if w not in windows]
-    columns = list(dict.fromkeys([*targets.current_columns_of(green_d3d, "DIII-D"), "ip__mean", *lf.FILTER_COLUMNS[1:],
-                                  "ip_over_peak", "n_frames", *(c for cols in windows.values() for c in cols)]))
+    columns, windows, missing = frame_columns(config, args.split_name, args.table_dir, green_d3d)
     log(f"lists {lists} at stride {args.stride}, fit on {fit_name}; rate windows {list(windows)}"
         + (f" ({missing} not in the frame table)" if missing else "") + f"; {workers} workers")
 
@@ -250,7 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     timing["frames_s"] = time.time() - t0
 
     t0 = time.time()
-    current, remainder_basis, sample = fit_bases(rows[fit_name], keep, config, args, workers)
+    placements = make_placements(args)
+    current, remainder_basis, sample = fit_bases(rows[fit_name], keep, config, args, workers, placements)
     remainder = RemainderModel.from_basis(remainder_basis, config.n_remainder, config.ridge_alpha)
     timing["bases_s"] = time.time() - t0
     log(f"current basis: {current.n_components} components ({int((current.parity > 0).sum())} even, "
@@ -258,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{config.n_remainder} of {remainder_basis.n_components} components")
 
     t0 = time.time()
-    responses, placements, fluxes = flux_objects(current, args)
+    responses, fluxes = flux_objects(current, args, placements)
     timing["flux_bases_s"] = time.time() - t0
 
     t0 = time.time()

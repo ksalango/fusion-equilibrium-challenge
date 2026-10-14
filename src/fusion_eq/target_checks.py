@@ -6,8 +6,10 @@ Y9 compares the plasma response with the continuous filament Green's function. T
 a discrete solver (F89): the difference is discretisation error, and the pass rule is set at
 that level (beyond five cells, the largest difference over the largest reference value there,
 at most 2e-2 on DIII-D and 1e-1 on MAST; beyond ten cells, the largest relative difference per
-node, at most 5e-3 and 3e-2; symmetry in the two arguments to 1e-3; the Z flip exact to
-rounding).
+node, at most 5e-3 and 3e-2; symmetry in the two arguments to 1e-3 between source cells outside
+the first three interior rings; the Z flip exact to rounding). The asymmetry of cells in those
+rings is a property of the border treatment (F89); the guard that goes with it is the share of
+the masked current of the fit sample in those rings, at most 1e-4 on each machine's grid.
 """
 
 from __future__ import annotations
@@ -26,6 +28,10 @@ STATUSES = ("pass", "fail", "review")
 # Y9 pass rule per machine (F89).
 Y9_THRESHOLDS = {"DIII-D": {"beyond_5": 2e-2, "beyond_10": 5e-3}, "MAST": {"beyond_5": 1e-1, "beyond_10": 3e-2}}
 Y9_SYMMETRY = 1e-3
+# Symmetry is ruled between source cells outside the first Y9_RINGS interior rings; the share of
+# the fit sample's absolute current in those rings is guarded at Y9_RING_SHARE.
+Y9_RINGS = 3
+Y9_RING_SHARE = 1e-4
 # The Z flip is exact up to rounding of the linear solve.
 Y9_FLIP = 1e-12
 
@@ -121,14 +127,60 @@ def interior_sources(shape: tuple[int, int], step: int = 6) -> list[tuple[int, i
     return [(i, j) for i in range(1, shape[0] - 1, step) for j in range(1, shape[1] - 1, step)]
 
 
-def response_against_filaments(response: ct.PlasmaResponse, sources: Sequence[tuple[int, int]]) -> dict:
+def border_distance(shape: tuple[int, int]) -> np.ndarray:
+    """``(nZ, nR)`` distance of each cell from the grid border in cells: 0 on the border, k on
+    the k-th interior ring."""
+    i = np.arange(shape[0])[:, None]
+    j = np.arange(shape[1])[None, :]
+    return np.minimum(np.minimum(i, shape[0] - 1 - i), np.minimum(j, shape[1] - 1 - j))
+
+
+def ring_shares(shares, rings: int = Y9_RINGS) -> dict[str, np.ndarray]:
+    """Per frame, the share of the absolute current on the border cells and in the first
+    ``rings`` interior rings, and the absolute total.
+
+    Args:
+        shares: ``(frames, nZ, nR)`` or ``(nZ, nR)`` shares on a machine's grid.
+        rings: Number of interior rings counted.
+
+    Returns:
+        ``border`` and ``rings`` (fractions of the absolute total, NaN where it is zero) and
+        ``total`` (the absolute total).
+    """
+    s = np.abs(np.asarray(shares, dtype=np.float64))
+    s = s[None] if s.ndim == 2 else s
+    d = border_distance(s.shape[1:])
+    total = s.sum(axis=(1, 2))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return {"border": np.where(total > 0, s[:, d == 0].sum(axis=1) / total, np.nan),
+                "rings": np.where(total > 0, s[:, (d >= 1) & (d <= rings)].sum(axis=1) / total, np.nan), "total": total}
+
+
+def ring_guard(parts: Sequence[dict[str, np.ndarray]], rings: int = Y9_RINGS) -> dict:
+    """Summary of ``ring_shares`` over frames (several batches): the largest per-frame share in
+    the first ``rings`` interior rings (the guarded value), its 99th percentile, the pooled
+    share over all frames, and the largest per-frame share on the border cells."""
+    frac = np.concatenate([p["rings"] for p in parts]) if parts else np.zeros(0)
+    border = np.concatenate([p["border"] for p in parts]) if parts else np.zeros(0)
+    total = np.concatenate([p["total"] for p in parts]) if parts else np.zeros(0)
+    ok = np.isfinite(frac)
+    pooled = float((frac[ok] * total[ok]).sum() / total[ok].sum()) if ok.any() and total[ok].sum() > 0 else float("nan")
+    largest = float(frac[ok].max()) if ok.any() else float("nan")
+    return {"n_frames": int(ok.sum()), "rings": rings, "max": largest,
+            "q99": float(np.percentile(frac[ok], 99)) if ok.any() else float("nan"), "pooled": pooled,
+            "border_max": float(np.nanmax(border)) if np.isfinite(border).any() else float("nan"),
+            "rule": Y9_RING_SHARE, "pass": bool(ok.any() and largest <= Y9_RING_SHARE)}
+
+
+def response_against_filaments(response: ct.PlasmaResponse, sources: Sequence[tuple[int, int]], rings: int = Y9_RINGS) -> dict:
     """Response to one ampere in each source cell against a filament at the cell's node.
 
     Returns the largest, over the sources, of: beyond five cells (Chebyshev distance in cells),
     the largest difference over the largest reference value there; beyond ten cells, the
     largest relative difference per node. Also the largest asymmetry of the mutual flux between
-    two source cells, and the largest relative difference between the response to the flipped
-    currents and the flipped response.
+    two source cells outside the first ``rings`` interior rings (``symmetry``, the ruled value)
+    and between any two source cells (``symmetry_all_sources``), and the largest relative
+    difference between the response to the flipped currents and the flipped response.
     """
     r, z = response.grid_r, response.grid_z
     d_r, d_z = gs.grid_steps(r, z)
@@ -151,13 +203,18 @@ def response_against_filaments(response: ct.PlasmaResponse, sources: Sequence[tu
     mutual = np.array([[flux[a][sources[b]] for b in range(len(sources))] for a in range(len(sources))])
     with np.errstate(divide="ignore", invalid="ignore"):
         asym = np.abs(mutual - mutual.T) / np.maximum(np.abs(mutual), np.abs(mutual.T))
+    distance = border_distance(shape)
+    inner = np.array([distance[i, j] > rings for i, j in sources], dtype=bool)
     flipped = cb.cell_flux(response, units[:, ::-1])
     flip = float(np.abs(flipped - flux[:, ::-1]).max() / np.abs(flux).max())
     return {"n_sources": len(sources), "beyond_5": beyond_5, "beyond_10": beyond_10,
-            "symmetry": float(np.nanmax(asym)), "flip": flip}
+            "symmetry": float(np.nanmax(asym[np.ix_(inner, inner)])) if inner.sum() > 1 else float("nan"),
+            "n_symmetry_sources": int(inner.sum()), "symmetry_rings_excluded": rings,
+            "symmetry_all_sources": float(np.nanmax(asym)), "flip": flip}
 
 
 def y9_status(machine: str, measured: dict) -> bool:
+    """Whether the response meets the Y9 rule of F89 (the ring guard is judged separately)."""
     t = Y9_THRESHOLDS[machine]
     return (measured["beyond_5"] <= t["beyond_5"] and measured["beyond_10"] <= t["beyond_10"]
             and measured["symmetry"] <= Y9_SYMMETRY and measured["flip"] <= Y9_FLIP)

@@ -62,7 +62,29 @@ def test_response_against_filaments_measures_the_discretisation_error():
     m = tc.response_against_filaments(response, sources)
     assert m["n_sources"] == 9 and 0.0 < m["beyond_5"] < 2e-2 and 0.0 < m["beyond_10"] < m["beyond_5"] * 2
     assert m["flip"] < 1e-12 and 0.0 < m["symmetry"] < 1e-2
+    # Symmetry is ruled between the sources outside the first three interior rings: (22, 22) to (43, 43).
+    assert m["n_symmetry_sources"] == 4 and m["symmetry_rings_excluded"] == 3
+    assert m["symmetry"] <= m["symmetry_all_sources"]
+    whole = tc.response_against_filaments(response, sources, rings=0)
+    assert whole["n_symmetry_sources"] == 9 and whole["symmetry"] == m["symmetry_all_sources"]
     assert tc.y9_status("DIII-D", {**m, "symmetry": 0.0}) and not tc.y9_status("DIII-D", {**m, "beyond_5": 0.05})
+    assert not tc.y9_status("DIII-D", {**m, "symmetry": float("nan")})
+
+
+def test_ring_shares_and_the_guard():
+    d = tc.border_distance((7, 9))
+    assert d[0].tolist() == [0] * 9 and d[3].tolist() == [0, 1, 2, 3, 3, 3, 2, 1, 0] and d.max() == 3
+    s = np.zeros((3, 11, 11))
+    s[0, 5, 5] = 1.0                                   # centre only
+    s[1, 5, 5], s[1, 3, 5], s[1, 0, 5] = 0.7, -0.2, 0.1  # ring 3 (signed) and the border
+    out = tc.ring_shares(s, rings=3)
+    assert out["rings"][0] == 0.0 and out["rings"][1] == pytest.approx(0.2) and out["border"][1] == pytest.approx(0.1)
+    assert np.isnan(out["rings"][2]) and out["total"][1] == pytest.approx(1.0)
+    assert tc.ring_shares(s, rings=2)["rings"][1] == 0.0
+    g = tc.ring_guard([tc.ring_shares(s[:1]), tc.ring_shares(s[1:])])
+    assert g["n_frames"] == 2 and g["max"] == pytest.approx(0.2) and g["pooled"] == pytest.approx(0.1)
+    assert g["border_max"] == pytest.approx(0.1) and g["rule"] == tc.Y9_RING_SHARE and not g["pass"]
+    assert tc.ring_guard([tc.ring_shares(s[0])])["pass"] and not tc.ring_guard([])["pass"]
 
 
 def test_support_envelope_and_landing():

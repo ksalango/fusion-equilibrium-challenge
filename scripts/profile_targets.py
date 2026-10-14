@@ -174,16 +174,35 @@ def check_y7_y8(objects, shares: np.ndarray, responses: dict) -> tuple[tc.Check,
     return c7, c8, {"Y7": y7, "Y8": y8}
 
 
-def check_y9(responses: dict, step: int) -> tuple[tc.Check, dict]:
+def check_y9(responses: dict, step: int, record: dict) -> tuple[tc.Check, dict]:
+    """The response against the filament Green's function (rule of F89) and the ring guard of
+    the fit sample, read from the build record. Without the guard in the record the status is
+    review."""
+    guards = record.get("sample", {}).get("border_rings", {})
     out = {}
     for m, r in responses.items():
         measured = tc.response_against_filaments(r, tc.interior_sources((r.grid_z.size, r.grid_r.size), step))
-        out[m] = {**measured, "thresholds": {**tc.Y9_THRESHOLDS[m], "symmetry": tc.Y9_SYMMETRY, "flip": tc.Y9_FLIP},
-                  "pass": tc.y9_status(m, measured)}
-    summary = "; ".join(f"{m}: beyond 5 cells {v['beyond_5']:.2e} (rule {v['thresholds']['beyond_5']:g}), beyond 10 cells "
-                        f"{v['beyond_10']:.2e} (rule {v['thresholds']['beyond_10']:g}), symmetry {v['symmetry']:.2e} (rule "
-                        f"{tc.Y9_SYMMETRY:g}), Z flip {v['flip']:.1e}" for m, v in out.items())
-    return tc.Check("Y9", "Response", "pass" if all(v["pass"] for v in out.values()) else "fail", summary), out
+        guard = guards.get(m)
+        out[m] = {**measured, "thresholds": {**tc.Y9_THRESHOLDS[m], "symmetry": tc.Y9_SYMMETRY, "flip": tc.Y9_FLIP,
+                                             "ring_share": tc.Y9_RING_SHARE},
+                  "ring_guard": guard, "response_pass": tc.y9_status(m, measured),
+                  "pass": tc.y9_status(m, measured) and bool(guard and guard["pass"])}
+    parts = []
+    for m, v in out.items():
+        g = v["ring_guard"]
+        guard_text = (f"share of the fit sample's current in the first {g['rings']} interior rings, largest {g['max']:.1e} "
+                      f"(rule {tc.Y9_RING_SHARE:g}, {g['n_frames']} frames)" if g else "ring guard not in the build record; rebuild")
+        parts.append(f"{m}: beyond 5 cells {v['beyond_5']:.2e} (rule {v['thresholds']['beyond_5']:g}), beyond 10 cells "
+                     f"{v['beyond_10']:.2e} (rule {v['thresholds']['beyond_10']:g}), symmetry outside the first "
+                     f"{v['symmetry_rings_excluded']} interior rings {v['symmetry']:.2e} (rule {tc.Y9_SYMMETRY:g}; all sources "
+                     f"{v['symmetry_all_sources']:.2e}), Z flip {v['flip']:.1e}; {guard_text}")
+    if all(v["pass"] for v in out.values()):
+        status = "pass"
+    elif all(v["response_pass"] and (v["ring_guard"] is None or v["ring_guard"]["pass"]) for v in out.values()):
+        status = "review"
+    else:
+        status = "fail"
+    return tc.Check("Y9", "Response", status, "; ".join(parts)), out
 
 
 def landing_cases(objects, shares: np.ndarray, mast_grid: GreenTable, d3d_grid: GreenTable, geometry, chunk: int = 2000) -> dict:
@@ -338,12 +357,21 @@ def render(checks: list[tc.Check], info: dict) -> str:
         lines.append("")
     y9 = info.get("Y9", {})
     if y9:
+        rings = next(iter(y9.values()))["symmetry_rings_excluded"]
         lines += ["## Y9. Response against the filament Green's function (F89)", "",
-                  "| Machine | Beyond 5 cells | Rule | Beyond 10 cells | Rule | Symmetry | Rule | Z flip | Rule |", "| --- " * 9 + "|"]
+                  f"Symmetry is ruled between source cells outside the first {rings} interior rings; the value over all "
+                  "source cells is shown beside it. The asymmetry of cells in those rings is a property of the border "
+                  "treatment (F89); the ring guard is the share of the absolute current of the fit sample in those rings "
+                  "(the share as it is on DIII-D, placed on MAST), largest over the frames.", "",
+                  "| Machine | Beyond 5 cells | Rule | Beyond 10 cells | Rule | Symmetry | Rule | Symmetry, all sources | "
+                  "Z flip | Rule | Ring share, largest | 99th percentile | Pooled | Rule |", "| --- " * 14 + "|"]
         for m, v in y9.items():
-            t = v["thresholds"]
+            t, g = v["thresholds"], v.get("ring_guard") or {}
+            guard = " | ".join(f"{g[k]:.1e}" if k in g else "not recorded" for k in ("max", "q99", "pooled"))
             lines.append(f"| {m} | {v['beyond_5']:.2e} | {t['beyond_5']:g} | {v['beyond_10']:.2e} | {t['beyond_10']:g} | "
-                         f"{v['symmetry']:.2e} | {t['symmetry']:g} | {v['flip']:.1e} | {t['flip']:g} |")
+                         f"{v['symmetry']:.2e} ({v['n_symmetry_sources']} sources) | {t['symmetry']:g} | "
+                         f"{v['symmetry_all_sources']:.2e} ({v['n_sources']} sources) | {v['flip']:.1e} | {t['flip']:g} | "
+                         f"{guard} | {t['ring_share']:g} |")
         lines.append("")
     y15 = info.get("Y15", {})
     if y15:
@@ -430,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
 
     shares = reconstructed_shares(objects, tables[fit_name], args.check_frames, args.seed)
     c7, c8, info["Y7_Y8"] = check_y7_y8(objects, shares, responses); checks += [c7, c8]
-    c, info["Y9"] = check_y9(responses, args.source_step); checks.append(c)
+    c, info["Y9"] = check_y9(responses, args.source_step, record); checks.append(c)
     geometry, _ = cp.geometry_from_split(args.data_root, "MAST")
     envelope_shares = reconstructed_shares(objects, tables[fit_name], args.envelope_frames, args.seed + 1)
     info["n_envelope_shares"] = int(len(envelope_shares))

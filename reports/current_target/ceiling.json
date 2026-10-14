@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-12T16:35:14+00:00",
-  "repo_commit": "3662a5edcfd89c7bf87d8a08b3180055c17de11a",
+  "timestamp": "2026-10-14T05:14:55+00:00",
+  "repo_commit": "fef1322a1c5513eb749c7fd88f85da776e65976e",
   "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
   "args": "",
   "arguments": {
@@ -19,6 +19,13 @@
       20
     ],
     "ridge_components": 10,
+    "symmetric_components": [
+      50,
+      60,
+      80
+    ],
+    "symmetric_base": 50,
+    "h_remainder_components": 10,
     "workers": null,
     "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
     "table_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table",
@@ -27,7 +34,7 @@
     "response_cache": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/current_target",
     "out": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/current_target"
   },
-  "runtime_s": 154.76278114318848,
+  "runtime_s": 230.1535460948944,
   "python": "3.13.15",
   "numpy": "2.5.2",
   "pandas": "3.0.5",
@@ -37,9 +44,7 @@
   "n_val_frames": 5551,
   "coil_model": "solenoid_flat, fit of 2026-10-10T18:45:26+00:00",
   "basis": {
-    "from_cache": false,
-    "n_frames": 16423,
-    "boundary_failures": 0
+    "from_cache": true
   },
   "current_basis_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/current_target/current_basis_2d3a250c8f13_k100_s4.npz",
   "remainder_basis_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/current_target/remainder_basis_2d3a250c8f13_k20_s4.npz",
@@ -105,6 +110,7 @@
     "ridge": {
       "k": 10,
       "alpha": 1.0,
+      "window": "10ms",
       "columns": [
         "ip__mean",
         "ip__rate",
@@ -155,24 +161,235 @@
       "val_coefficient_r2": 0.8842387000454327
     }
   },
+  "symmetric_basis_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/current_target/symmetric_share_basis_2d3a250c8f13_k80_s4.npz",
+  "target_phase": {
+    "symmetric_basis": {
+      "n_components": 80,
+      "n_frames": 16397,
+      "parity_counts": {
+        "50": {
+          "even": 30,
+          "odd": 20
+        },
+        "60": {
+          "even": 35,
+          "odd": 25
+        },
+        "80": {
+          "even": 44,
+          "odd": 36
+        }
+      },
+      "explained_cumulative": {
+        "50": 0.9851775463766687,
+        "60": 0.98715997586138,
+        "80": 0.9898343268601729
+      }
+    },
+    "placement": {
+      "r0_m": 0.85,
+      "a0_m": 0.65,
+      "retained": {
+        "n": 5551,
+        "median": 1.0,
+        "q05": 0.9999999999999998,
+        "q95": 1.0000000000000002,
+        "mean": 1.0
+      }
+    },
+    "share_total_reconstructed": {
+      "n": 5551,
+      "median": 0.9975977872474109,
+      "q05": 0.9890008078792687,
+      "q95": 1.0070743165834517,
+      "mean": 0.9979646535542807
+    },
+    "ridges": {
+      "10ms": {
+        "k": 10,
+        "alpha": 1.0,
+        "window": "10ms",
+        "columns": [
+          "ip__mean",
+          "ip__rate",
+          "sol__mean",
+          "sol__rate",
+          "tf__mean",
+          "tf__rate",
+          "magnetics_F1A__mean",
+          "magnetics_F1A__rate",
+          "magnetics_F1B__mean",
+          "magnetics_F1B__rate",
+          "magnetics_F2A__mean",
+          "magnetics_F2A__rate",
+          "magnetics_F2B__mean",
+          "magnetics_F2B__rate",
+          "magnetics_F3A__mean",
+          "magnetics_F3A__rate",
+          "magnetics_F3B__mean",
+          "magnetics_F3B__rate",
+          "magnetics_F4A__mean",
+          "magnetics_F4A__rate",
+          "magnetics_F4B__mean",
+          "magnetics_F4B__rate",
+          "magnetics_F5A__mean",
+          "magnetics_F5A__rate",
+          "magnetics_F5B__mean",
+          "magnetics_F5B__rate",
+          "magnetics_F6A__mean",
+          "magnetics_F6A__rate",
+          "magnetics_F6B__mean",
+          "magnetics_F6B__rate",
+          "magnetics_F7A__mean",
+          "magnetics_F7A__rate",
+          "magnetics_F7B__mean",
+          "magnetics_F7B__rate",
+          "magnetics_F8A__mean",
+          "magnetics_F8A__rate",
+          "magnetics_F8B__mean",
+          "magnetics_F8B__rate",
+          "magnetics_F9A__mean",
+          "magnetics_F9A__rate",
+          "magnetics_F9B__mean",
+          "magnetics_F9B__rate"
+        ],
+        "n_frames": 16423,
+        "n_complete": 16423,
+        "train_coefficient_r2": 0.8885359124695107,
+        "val_coefficient_r2": 0.8842387000454327
+      },
+      "50ms": {
+        "k": 10,
+        "alpha": 1.0,
+        "window": "50ms",
+        "columns": [
+          "ip__mean",
+          "ip__rate50",
+          "sol__mean",
+          "sol__rate50",
+          "tf__mean",
+          "tf__rate",
+          "magnetics_F1A__mean",
+          "magnetics_F1A__rate50",
+          "magnetics_F1B__mean",
+          "magnetics_F1B__rate50",
+          "magnetics_F2A__mean",
+          "magnetics_F2A__rate50",
+          "magnetics_F2B__mean",
+          "magnetics_F2B__rate50",
+          "magnetics_F3A__mean",
+          "magnetics_F3A__rate50",
+          "magnetics_F3B__mean",
+          "magnetics_F3B__rate50",
+          "magnetics_F4A__mean",
+          "magnetics_F4A__rate50",
+          "magnetics_F4B__mean",
+          "magnetics_F4B__rate50",
+          "magnetics_F5A__mean",
+          "magnetics_F5A__rate50",
+          "magnetics_F5B__mean",
+          "magnetics_F5B__rate50",
+          "magnetics_F6A__mean",
+          "magnetics_F6A__rate50",
+          "magnetics_F6B__mean",
+          "magnetics_F6B__rate50",
+          "magnetics_F7A__mean",
+          "magnetics_F7A__rate50",
+          "magnetics_F7B__mean",
+          "magnetics_F7B__rate50",
+          "magnetics_F8A__mean",
+          "magnetics_F8A__rate50",
+          "magnetics_F8B__mean",
+          "magnetics_F8B__rate50",
+          "magnetics_F9A__mean",
+          "magnetics_F9A__rate50",
+          "magnetics_F9B__mean",
+          "magnetics_F9B__rate50"
+        ],
+        "n_frames": 16423,
+        "n_complete": 16423,
+        "train_coefficient_r2": 0.9083824972366715,
+        "val_coefficient_r2": 0.9054572784170332
+      }
+    },
+    "comparisons": [
+      {
+        "variant": "h_symmetric_50",
+        "reference": "f_remainder_pca_10",
+        "d_S": -0.00015900000000002024,
+        "d_consistency": -0.0005690000000000417,
+        "d_volume": -0.0006489999999998997
+      },
+      {
+        "variant": "h_symmetric_60",
+        "reference": "f_remainder_pca_10",
+        "d_S": -2.0999999999937735e-05,
+        "d_consistency": -0.00011300000000002974,
+        "d_volume": -0.00023099999999998122
+      },
+      {
+        "variant": "h_symmetric_80",
+        "reference": "f_remainder_pca_10",
+        "d_S": 0.0003509999999999902,
+        "d_consistency": 0.0012400000000000189,
+        "d_volume": 0.0005350000000000632
+      },
+      {
+        "variant": "i_placed_mast_50",
+        "reference": "h_symmetric_50",
+        "d_S": -0.00012199999999995548,
+        "d_consistency": -0.0004109999999999392,
+        "d_volume": 0.00015899999999990921
+      },
+      {
+        "variant": "j_rescaled_50",
+        "reference": "h_symmetric_50",
+        "d_S": -0.0009759999999999769,
+        "d_consistency": -0.003997999999999946,
+        "d_volume": -0.022554000000000074
+      },
+      {
+        "variant": "k_ridge_10ms_50",
+        "reference": "g_remainder_ridge_10",
+        "d_S": -0.00017400000000000748,
+        "d_consistency": -0.0006319999999999659,
+        "d_volume": -0.0009460000000000024
+      },
+      {
+        "variant": "k_ridge_50ms_50",
+        "reference": "g_remainder_ridge_10",
+        "d_S": -9.199999999998099e-05,
+        "d_consistency": -0.0003569999999999407,
+        "d_volume": -0.00042599999999992644
+      }
+    ]
+  },
   "timing": {
-    "frames_s": 0.15874481201171875,
-    "bases_s": 22.909112215042114,
-    "remainder_ridge_s": 17.84751009941101,
-    "plasma_basis_s": 0.0300753116607666,
-    "validation_pass_s": 8.039425134658813,
-    "references_s": 0.055505990982055664,
-    "score_a_masked_s": 9.174356937408447,
-    "score_b_unmasked_s": 9.278701066970825,
-    "score_c_pca_20_s": 9.24226999282837,
-    "score_c_pca_50_s": 9.359776020050049,
-    "score_c_pca_100_s": 9.408522129058838,
-    "score_d_plasma_basis_50_s": 9.44633173942566,
-    "score_e_remainder_exact_s": 9.846412181854248,
-    "score_f_remainder_pca_5_s": 9.54016399383545,
-    "score_f_remainder_pca_10_s": 9.57897686958313,
-    "score_f_remainder_pca_20_s": 9.616687059402466,
-    "score_g_remainder_ridge_10_s": 9.901208877563477
+    "frames_s": 0.34323596954345703,
+    "bases_s": 0.009270906448364258,
+    "remainder_ridge_s": 19.669723987579346,
+    "plasma_basis_s": 0.0777289867401123,
+    "target_objects_s": 0.013278961181640625,
+    "validation_pass_s": 9.756118059158325,
+    "references_s": 0.07040214538574219,
+    "score_a_masked_s": 10.405547142028809,
+    "score_b_unmasked_s": 10.209939241409302,
+    "score_c_pca_20_s": 10.370863676071167,
+    "score_c_pca_50_s": 10.875000715255737,
+    "score_c_pca_100_s": 11.150115013122559,
+    "score_d_plasma_basis_50_s": 11.17349100112915,
+    "score_e_remainder_exact_s": 11.710465908050537,
+    "score_f_remainder_pca_5_s": 11.514170169830322,
+    "score_f_remainder_pca_10_s": 11.309388160705566,
+    "score_f_remainder_pca_20_s": 11.379936933517456,
+    "score_g_remainder_ridge_10_s": 11.513921022415161,
+    "score_h_symmetric_50_s": 11.500247955322266,
+    "score_h_symmetric_60_s": 11.601274967193604,
+    "score_h_symmetric_80_s": 11.674254894256592,
+    "score_i_placed_mast_50_s": 11.073431015014648,
+    "score_j_rescaled_50_s": 10.681555032730103,
+    "score_k_ridge_10ms_50_s": 10.111189126968384,
+    "score_k_ridge_50ms_50_s": 10.385109901428223
   },
   "scores": {
     "a_masked": {
@@ -370,6 +587,132 @@
       "r2_tri_bot": 0.980018,
       "r2_volume": 0.990995,
       "r2_li": 0.998264,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "h_symmetric_50": {
+      "S": 0.998068,
+      "r2_psi": 0.999996,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.992977,
+      "consistency": 0.993864,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.999881,
+      "r2_Z_axis": 0.999646,
+      "r2_kappa": 0.987904,
+      "r2_tri_top": 0.989866,
+      "r2_tri_bot": 0.983738,
+      "r2_volume": 0.997361,
+      "r2_li": 0.998657,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "h_symmetric_60": {
+      "S": 0.998206,
+      "r2_psi": 0.999997,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.993433,
+      "consistency": 0.99432,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.999928,
+      "r2_Z_axis": 0.999668,
+      "r2_kappa": 0.988749,
+      "r2_tri_top": 0.989817,
+      "r2_tri_bot": 0.985414,
+      "r2_volume": 0.997779,
+      "r2_li": 0.998882,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "h_symmetric_80": {
+      "S": 0.998578,
+      "r2_psi": 0.999998,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.994451,
+      "consistency": 0.995673,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.99995,
+      "r2_Z_axis": 0.999894,
+      "r2_kappa": 0.990573,
+      "r2_tri_top": 0.992126,
+      "r2_tri_bot": 0.989573,
+      "r2_volume": 0.998545,
+      "r2_li": 0.999052,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "i_placed_mast_50": {
+      "S": 0.997946,
+      "r2_psi": 0.999994,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.992588,
+      "consistency": 0.993453,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.999897,
+      "r2_Z_axis": 0.999684,
+      "r2_kappa": 0.986372,
+      "r2_tri_top": 0.989794,
+      "r2_tri_bot": 0.983055,
+      "r2_volume": 0.99752,
+      "r2_li": 0.997846,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "j_rescaled_50": {
+      "S": 0.997092,
+      "r2_psi": 0.999868,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.991916,
+      "consistency": 0.989866,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.998978,
+      "r2_Z_axis": 0.99964,
+      "r2_kappa": 0.98539,
+      "r2_tri_top": 0.989558,
+      "r2_tri_bot": 0.983082,
+      "r2_volume": 0.974807,
+      "r2_li": 0.997611,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "k_ridge_10ms_50": {
+      "S": 0.997107,
+      "r2_psi": 0.99984,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.99111,
+      "consistency": 0.990421,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.999442,
+      "r2_Z_axis": 0.999308,
+      "r2_kappa": 0.985237,
+      "r2_tri_top": 0.984274,
+      "r2_tri_bot": 0.976522,
+      "r2_volume": 0.990049,
+      "r2_li": 0.998115,
+      "r2_q95": 1.0,
+      "r2_betaN": 1.0
+    },
+    "k_ridge_50ms_50": {
+      "S": 0.997189,
+      "r2_psi": 0.999868,
+      "r2_qb": 1.0,
+      "one_minus_dlcfs": 0.991226,
+      "consistency": 0.990696,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.99943,
+      "r2_Z_axis": 0.999296,
+      "r2_kappa": 0.98583,
+      "r2_tri_top": 0.984732,
+      "r2_tri_bot": 0.976851,
+      "r2_volume": 0.990569,
+      "r2_li": 0.998163,
       "r2_q95": 1.0,
       "r2_betaN": 1.0
     }

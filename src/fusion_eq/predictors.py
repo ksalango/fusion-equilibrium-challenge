@@ -8,6 +8,10 @@ no flat term) on the scorer's grid, converted to the stored frame with the DIII-
 rule, ``-sign(Ip)`` times the physical flux, and q95 and betaN set to the DIII-D
 training medians as a placeholder.
 
+``coil_only_v0``: the calculated coil flux alone on both machines. ``mean_current_v0``: the coil
+flux plus the flux of the mean current share of the target build, with the remainder ridge on
+DIII-D (``docs/TARGET.md``, Part 6).
+
 The fitted models are the files ``compare_baselines.py`` saves under the baseline cache,
 named by the hash of the training list. ``setup`` loads them, or fits and saves them
 once when they are missing.
@@ -21,7 +25,8 @@ from typing import Callable
 
 import numpy as np
 
-from fusion_eq import baseline as bl, coil_flux as cf, frame_table as ft, io, models, split as sp, submission, targets
+from fusion_eq import (baseline as bl, coil_flux as cf, frame_table as ft, io, models, split as sp, submission,
+                       target_build as tb, targets)
 from fusion_eq.dataset import DEFAULT_PROCESSED_ROOT, REPO_ROOT, default_data_root
 from fusion_eq.machines import machine_config
 
@@ -201,3 +206,83 @@ class CoilOnlyV0(BaselineV0):
         if machine == "MAST":
             return self._predict_mast(shot)
         raise ValueError(f"unknown machine {machine!r}")
+
+
+@submission.register("mean_current_v0")
+class MeanCurrentV0(BaselineV0):
+    """The mean current of the target build on both machines (``docs/TARGET.md``, Part 6). It
+    contains no model: it runs the MAST path of the target (sign constant, placement, machine
+    constants, MAST plasma response) end to end before a network exists.
+
+    Map: the coil flux under each machine's adopted coil model plus ``Ip phi_mean`` of the
+    machine (``target_build.mean_current_maps``), with the ridge remainder of the build's
+    default rate window on DIII-D when ``with_remainder`` and no remainder on MAST, converted to
+    the stored frame with each machine's sign constant (``targets.PSI_SIGN_RULE_C``). Scalars as
+    in ``baseline_v0``: the ``ridge_signed`` scalar ridge on DIII-D, the DIII-D training
+    medians on MAST.
+
+    Args:
+        targets_root: Root of the target builds; the build of ``target_config``'s version is
+            read from ``<targets_root>/v<version>``.
+        target_config: Target configuration (``configs/target_v1.yaml``).
+        with_remainder: Add the ridge remainder on DIII-D.
+        Other arguments as in ``BaselineV0``.
+    """
+
+    name = "mean_current_v0"
+
+    def __init__(self, split_path: Path | str = DEFAULT_SPLIT, cache_dir: Path | str = bl.DEFAULT_CACHE_DIR,
+                 green_dir: Path | str = DEFAULT_GREEN_DIR, table_root: Path | str = ft.DEFAULT_TABLE_ROOT,
+                 data_root: Path | str | None = None, params: bl.BaselineParams = bl.BaselineParams(),
+                 build_params: ft.BuildParams = ft.BuildParams(), targets_root: Path | str | None = None,
+                 target_config: Path | str | None = None, with_remainder: bool = True) -> None:
+        super().__init__(split_path, cache_dir, green_dir, table_root, data_root, params, build_params)
+        self.targets_root = Path(targets_root) if targets_root is not None else tb.DEFAULT_TARGET_ROOT
+        self.target_config = Path(target_config) if target_config is not None else tb.DEFAULT_CONFIG
+        self.with_remainder = with_remainder
+        self.objects = None
+        self.tables: dict[str, cf.GreenTable] = {}
+        self.scales: dict[str, cf.CoilScales] = {}
+
+    def setup(self, log: Callable[[str], None] = print) -> dict:
+        identifiers = super().setup(log)
+        config = tb.TargetConfig.load(self.target_config)
+        folder = tb.target_dir(config.version, self.targets_root)
+        if not (folder / "build.json").is_file():
+            raise FileNotFoundError(f"{folder / 'build.json'} not found; run python scripts/build_targets.py first")
+        self.objects = tb.TargetObjects.load(folder)
+        record = self.objects.record
+        if record.get("config_hash") != config.hash():
+            raise ValueError(f"the target build in {folder} was made with another configuration than {self.target_config}")
+        for machine in tb.MACHINES:
+            self.tables[machine] = green_table(self.green_dir, machine)
+            self.scales[machine] = cf.adopted_scales(machine, self.tables[machine].columns)
+        identifiers.pop("mast_scalars", None)
+        identifiers.update({
+            "target_build": {"version": config.version, "config_hash": record["config_hash"], "checksums": record.get("checksums", {}),
+                             "fit_list": record.get("fit_list"), "default_window": self.objects.remainder_model.default_window},
+            "machine_constants": record.get("machine_constants", {}),
+            "flux_model": "coil flux plus Ip phi_mean" + (", ridge remainder on DIII-D" if self.with_remainder else ", no remainder"),
+            "sign_rule_c": {m: targets.sign_rule_c(m) for m in tb.MACHINES},
+            "coil_scales": {m: self.scales[m].to_dict() for m in tb.MACHINES},
+            "scalars": {"DIII-D": "ridge_signed of baseline_v0", "MAST": "placeholder: DIII-D training medians"},
+        })
+        log(f"mean_current_v0 ready: target build v{config.version} ({record['config_hash'][:12]}), "
+            f"remainder {'on' if self.with_remainder else 'off'} (window {self.objects.remainder_model.default_window})")
+        return identifiers
+
+    def predict_shot(self, shot: io.Shot, machine: str) -> bl.Prediction:
+        self._check_ready()
+        if self.objects is None:
+            raise RuntimeError("call setup() first")
+        if machine not in tb.MACHINES:
+            raise ValueError(f"unknown machine {machine!r}")
+        frames = self._frames(shot, machine)
+        psi = tb.mean_current_maps(machine, frames, self.tables[machine], self.scales[machine], self.objects,
+                                   with_remainder=self.with_remainder)
+        if machine == "DIII-D":
+            q95, beta_n = self.model_set.baselines()["ridge_signed"].scalars(frames)
+        else:
+            q95 = np.full(len(frames), self.scalar_medians["q95"])
+            beta_n = np.full(len(frames), self.scalar_medians["betaN"])
+        return bl.Prediction(psirz=psi.astype(np.float32), q95=np.asarray(q95), betaN=np.asarray(beta_n))
