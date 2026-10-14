@@ -251,9 +251,19 @@ def shot_maps(shot_ids: Iterable[str], data_root: Path | str, split: str = datas
         yield shot_id, ft.read_flux_maps([shot_id], split, data_root)
 
 
+class CacheMissing(FileNotFoundError):
+    """A cache entry needed by a read-only run is absent."""
+
+
+def _require_cached(path: Path, read_only: bool) -> None:
+    if read_only:
+        raise CacheMissing(f"{path} is not in the cache; this run only reads the cache")
+
+
 def encode_shots(shot_ids: Sequence[str], basis: FluxBasis, data_root: Path | str,
                  cache_dir: Path | str = DEFAULT_CACHE_DIR, split: str = dataset.LABELLED_SPLITS[0],
-                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "") -> np.ndarray:
+                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "",
+                 read_only: bool = False) -> np.ndarray:
     """Coefficients of the listed shots in frame-table order (sorted ids, frames in time).
 
     Each shot's coefficients are cached as ``<cache_dir>/<basis hash>[_<tag>]/<shot>.npy``
@@ -263,15 +273,19 @@ def encode_shots(shot_ids: Sequence[str], basis: FluxBasis, data_root: Path | st
         target: Optional ``(shot_id, stored maps) -> maps`` applied before encoding, for
             a basis of a derived quantity (the plasma target); ``tag`` then names the
             cache folder so that two targets of one basis never share a folder.
+        read_only: Read cached coefficients only; raise ``CacheMissing`` for an absent
+            shot instead of computing and writing it.
     """
     folder = Path(cache_dir) / (basis.hash()[:16] + (f"_{tag}" if tag else ""))
-    folder.mkdir(parents=True, exist_ok=True)
+    if not read_only:
+        folder.mkdir(parents=True, exist_ok=True)
     parts = []
     for shot_id in sorted(set(shot_ids)):
         path = folder / f"{shot_id}.npy"
         if path.is_file():
             parts.append(np.load(path))
             continue
+        _require_cached(path, read_only)
         maps = ft.read_flux_maps([shot_id], split, data_root)
         if target is not None:
             maps = target(shot_id, maps)
@@ -285,16 +299,19 @@ def encode_shots(shot_ids: Sequence[str], basis: FluxBasis, data_root: Path | st
 
 def cached_basis(train_ids: Sequence[str], params: "BaselineParams", data_root: Path | str,
                  cache_dir: Path | str = DEFAULT_CACHE_DIR, split: str = dataset.LABELLED_SPLITS[0],
-                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "") -> tuple[FluxBasis, float]:
+                 target: Callable[[str, np.ndarray], np.ndarray] | None = None, tag: str = "",
+                 read_only: bool = False) -> tuple[FluxBasis, float]:
     """The basis of a training list, fitted once and cached by the ids, the parameters and
-    the tag. Returns ``(basis, seconds spent fitting)``, 0 on a cache hit."""
+    the tag. Returns ``(basis, seconds spent fitting)``, 0 on a cache hit. With
+    ``read_only`` an absent basis raises ``CacheMissing``."""
     import time
     cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
     name = f"basis_{hash_of_ids(train_ids)}_k{params.n_components}_f{params.pca_frames}_s{params.seed}" + (f"_{tag}" if tag else "")
     path = cache_dir / f"{name}.npz"
     if path.is_file():
         return FluxBasis.load(path), 0.0
+    _require_cached(path, read_only)
+    cache_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     order = basis_shot_order(train_ids, params.seed)
     maps = ((maps if target is None else target(shot_id, maps)) for shot_id, maps in shot_maps(order, data_root, split))
@@ -479,6 +496,8 @@ class References:
         ref_stats: Per shot, the reference sums the scorer pools.
         frame_stride: Stride the truth was read with.
         from_cache: Whether the set was read from the on-disk cache.
+        frames: For a subset (``subset_references``), shot id to the indices of the
+            selected frames among its strided frames; None for every frame.
     """
 
     shot_ids: list[str]
@@ -486,6 +505,7 @@ class References:
     ref_stats: list[dict]
     frame_stride: int
     from_cache: bool = False
+    frames: dict[str, np.ndarray] | None = None
 
     @property
     def means(self) -> tuple:
@@ -545,7 +565,17 @@ def _shot_reference(shot_id: str, data_root: str, split: str, stride: int) -> di
     for k, c in enumerate(contours):
         if c is not None:
             packed[k, :len(c)] = np.asarray(c, dtype=np.float64)
-    g = truth["psi"].astype(np.float64)
+    return {"contours": packed, "n_points": n_points, "cons": np.asarray(cons, dtype=np.float64),
+            "cmask": np.asarray(cmask, dtype=bool), "rgeo": float(rgeo), "stats": reference_stats(truth, cons, cmask)}
+
+
+def reference_stats(truth: Mapping[str, np.ndarray], cons, cmask) -> dict:
+    """The sums the scorer pools over a shot's frames: flux, the two scalars and the seven
+    derived scalars of the truth (``psi``, ``q95``, ``betaN``) and its reference."""
+    ls = local_score_module()
+    g = np.asarray(truth["psi"]).astype(np.float64)
+    cons = np.asarray(cons, dtype=np.float64)
+    cmask = np.asarray(cmask, dtype=bool)
     fin = np.isfinite(g)
     stats = {"psi_sum": float(g[fin].sum()), "psi_sumsq": float((g[fin] ** 2).sum()), "psi_n": int(fin.sum()),
              "scal_sum": np.zeros(ls.N_SCALARS), "scal_sumsq": np.zeros(ls.N_SCALARS), "scal_n": np.zeros(ls.N_SCALARS),
@@ -556,8 +586,39 @@ def _shot_reference(shot_id: str, data_root: str, split: str, stride: int) -> di
     for j in range(ls.N_CONS):
         v = cons[cmask[:, j], j]
         stats["cons_sum"][j], stats["cons_sumsq"][j], stats["cons_n"][j] = v.sum(), (v ** 2).sum(), v.size
-    return {"contours": packed, "n_points": n_points, "cons": np.asarray(cons, dtype=np.float64),
-            "cmask": np.asarray(cmask, dtype=bool), "rgeo": float(rgeo), "stats": stats}
+    return stats
+
+
+def subset_references(references: References, frames: Mapping[str, np.ndarray], data_root: Path | str,
+                      split: str = dataset.LABELLED_SPLITS[0]) -> References:
+    """The references of a subset of each shot's frames, as if only those frames existed.
+
+    Contours and derived scalars are taken per frame; the pooled sums and each shot's
+    mean major radius (the scale of the boundary distance) are recomputed over the
+    selected frames. Shots without a selected frame are left out.
+
+    Args:
+        references: References of the shots at their frame stride.
+        frames: Shot id to the indices of the selected frames among the shot's strided
+            frames.
+        data_root, split: Where the true maps are read from.
+    """
+    ls = local_score_module()
+    shot_ids, refs, stats, selected = [], [], [], {}
+    for shot_id, (contours, cons, cmask, _) in zip(references.shot_ids, references.refs):
+        idx = np.asarray(frames.get(shot_id, ()), dtype=np.int64)
+        if idx.size == 0:
+            continue
+        truth = load_truth(shot_id, data_root, split, references.frame_stride)
+        truth = {k: np.asarray(v)[idx] for k, v in truth.items()}
+        sub_contours = [contours[i] for i in idx]
+        radii = [ls.major_radius(c) for c in sub_contours if c is not None]
+        shot_ids.append(shot_id)
+        refs.append((sub_contours, cons[idx], cmask[idx], float(np.mean(radii)) if radii else float("nan")))
+        stats.append(reference_stats(truth, cons[idx], cmask[idx]))
+        selected[shot_id] = idx
+    return References(shot_ids=shot_ids, refs=refs, ref_stats=stats, frame_stride=references.frame_stride,
+                      from_cache=False, frames=selected)
 
 
 def _unpack_reference(record: dict) -> tuple:
@@ -612,7 +673,7 @@ def load_references(path: Path | str) -> tuple[dict, list[dict]]:
 
 def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str = dataset.LABELLED_SPLITS[0],
                      frame_stride: int = 1, workers: int | None = None,
-                     cache_dir: Path | str | None = DEFAULT_REFERENCE_DIR) -> References:
+                     cache_dir: Path | str | None = DEFAULT_REFERENCE_DIR, read_only: bool = False) -> References:
     """Builds the scorer's reference (boundary and seven derived scalars per frame, and
     the pooled sums) from the true maps of the shots, as ``local_score.py`` does.
 
@@ -625,6 +686,8 @@ def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str 
             None, one for the single-process path. The result does not depend on it.
         cache_dir: Folder of the on-disk cache, keyed by the shot list, the split, the
             stride and the scorer version; None disables the cache.
+        read_only: With a cache folder, raise ``CacheMissing`` instead of building and
+            writing an absent set.
     """
     shot_ids = list(shot_ids)
     path = None if cache_dir is None else Path(cache_dir) / f"refs_{reference_key(shot_ids, split, frame_stride)}.npz"
@@ -635,6 +698,8 @@ def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str 
             raise ValueError(f"{path} holds another reference set")
         from_cache = True
     else:
+        if path is not None:
+            _require_cached(path, read_only)
         items = [(s, str(data_root), split, int(frame_stride)) for s in shot_ids]
         records = list(_map_ordered(_shot_reference, items, workers))
         if path is not None:
@@ -644,18 +709,23 @@ def build_references(shot_ids: Sequence[str], data_root: Path | str, split: str 
 
 
 def _score_one_shot(shot_id: str, data_root: str, split: str, stride: int, ref: tuple, psirz: np.ndarray,
-                    q95: np.ndarray, beta_n: np.ndarray, psi_sign: float, means: tuple) -> dict:
-    """``local_score.score_shot`` of one shot; runs in a worker process."""
+                    q95: np.ndarray, beta_n: np.ndarray, psi_sign: float, means: tuple,
+                    frames: np.ndarray | None = None) -> dict:
+    """``local_score.score_shot`` of one shot, or of the selected frames among its strided
+    frames (``frames``); runs in a worker process."""
     ls = local_score_module()
     env = starter_kit.envelope_mask(machine_config("DIII-D"))
     truth = load_truth(shot_id, data_root, split, stride)
+    if frames is not None:
+        truth = {k: np.asarray(v)[frames] for k, v in truth.items()}
     pred = Prediction(psirz, q95, beta_n).as_scorer_dict()
     return ls.score_shot(truth, ref, pred, env.grid_R, env.grid_Z, env.mask_coarse, env.mask_f, psi_sign, means)
 
 
 def score_local(predict_shot: Callable[[str], Prediction] | Mapping[str, Prediction], shot_ids: Sequence[str],
                 data_root: Path | str, split: str = dataset.LABELLED_SPLITS[0], frame_stride: int = 1,
-                references: References | None = None, workers: int | None = None) -> LocalScore:
+                references: References | None = None, workers: int | None = None,
+                psi_sign: float | None = None) -> LocalScore:
     """Scores predictions on labelled shots with the organizers' local scorer.
 
     The scorer's reference is built from the true maps (or taken from ``references``),
@@ -674,8 +744,12 @@ def score_local(predict_shot: Callable[[str], Prediction] | Mapping[str, Predict
         split: Labelled split of the shots.
         frame_stride: Keep every ``frame_stride``-th frame of each shot, in the truth
             and in the prediction alike.
-        references: References built earlier for exactly these shots and stride.
+        references: References built earlier for exactly these shots and stride. A
+            subset (``subset_references``) scores only its selected frames: predictions
+            still cover every strided frame and are cut to the same frames.
         workers: Scoring processes.
+        psi_sign: The global flux sign to use instead of deciding it, for a subset scored
+            under the sign chosen over the whole set.
     """
     ls = local_score_module()
     shot_ids = list(shot_ids)
@@ -685,20 +759,27 @@ def score_local(predict_shot: Callable[[str], Prediction] | Mapping[str, Predict
     if references.shot_ids != shot_ids or references.frame_stride != frame_stride:
         raise ValueError("references were built for other shots or another frame stride")
     means = references.means
-    # The global flux sign, from the flux residuals of every shot (the scorer's probe pass).
-    residual_totals = {s: 0.0 for s in ls.PSI_SIGNS}
-    for shot_id in shot_ids:
-        truth = load_truth(shot_id, data_root, split, frame_stride)
-        rr, _, _ = ls.psi_residuals(truth["psi"], get(shot_id).psirz.astype(np.float64), means[0])
-        for s in ls.PSI_SIGNS:
-            residual_totals[s] += rr[s]
-    psi_sign = min(ls.PSI_SIGNS, key=lambda s: residual_totals[s])
+    selected = references.frames or {}
+
+    def cut(shot_id: str, values) -> np.ndarray:
+        values = np.asarray(values)
+        return values[selected[shot_id]] if shot_id in selected else values
+
+    if psi_sign is None:
+        # The global flux sign, from the flux residuals of every shot (the scorer's probe pass).
+        residual_totals = {s: 0.0 for s in ls.PSI_SIGNS}
+        for shot_id in shot_ids:
+            truth = load_truth(shot_id, data_root, split, frame_stride)
+            rr, _, _ = ls.psi_residuals(cut(shot_id, truth["psi"]), cut(shot_id, get(shot_id).psirz).astype(np.float64), means[0])
+            for s in ls.PSI_SIGNS:
+                residual_totals[s] += rr[s]
+        psi_sign = min(ls.PSI_SIGNS, key=lambda s: residual_totals[s])
 
     def items():
         for shot_id, ref in zip(shot_ids, references.refs):
             pred = get(shot_id)
-            yield (shot_id, str(data_root), split, int(frame_stride), ref, np.asarray(pred.psirz),
-                   np.asarray(pred.q95), np.asarray(pred.betaN), psi_sign, means)
+            yield (shot_id, str(data_root), split, int(frame_stride), ref, cut(shot_id, pred.psirz),
+                   cut(shot_id, pred.q95), cut(shot_id, pred.betaN), psi_sign, means, selected.get(shot_id))
 
     parts = list(_map_ordered(_score_one_shot, items(), workers))
     return LocalScore(shot_ids=shot_ids, parts=parts, ref_stats=list(references.ref_stats), psi_sign=psi_sign,

@@ -4,7 +4,7 @@ Findings from the data quality phase of the Fusion Equilibrium Challenge project
 evidence for each and its consequence for data preparation and modelling. Later phases add
 their findings to this file.
 
-- Period covered: 4 to 12 October 2026.
+- Period covered: 4 to 13 October 2026.
 - Evidence: `reports/qa/qa_report.md` (full run over 9,124 shots, with the Ip alignment
   enabled), `reports/qa_before_ipfix/qa_report.md` (the same run before the alignment),
   `notebooks/01_qa.ipynb`; from 6 October, `reports/frame_table/frame_table_report.md`,
@@ -22,9 +22,14 @@ their findings to this file.
   `reports/submissions/2026-10-11_coil_only_v0/run.json`, and
   `reports/current_target/ceiling.md` and `ceiling.json` (`scripts/current_ceiling.py`); from
   12 October, the same two files from the run of 12 October 2026 on the working lists, which
-  adds the vacuum remainder (variants e to g) and reproduces variants a to d of F78.
+  adds the vacuum remainder (variants e to g) and reproduces variants a to d of F78; from
+  13 October, `reports/features/v1/feature_report.md` with `profile.json` and the parquet
+  tables of `scripts/profile_features.py`, `linear_check.md` and `linear_check_followup.md`
+  (`scripts/feature_linear_check.py`, working lists), `backup_radii_check.md`
+  (`scripts/backup_radii_check.py`) and the saved outputs of `notebooks/06_features.ipynb`.
 - Check ids in brackets refer to `docs/QA.md` (0.x), `docs/FRAME_TABLE.md` (Tx),
-  `docs/COIL_FLUX.md` (Kx) and `docs/SPLIT.md` (Sx).
+  `docs/COIL_FLUX.md` (Kx), `docs/SPLIT.md` (Sx), `docs/FEATURES.md` (Xx) and
+  `docs/TARGET.md` (Yx).
 
 ## Summary
 
@@ -56,6 +61,14 @@ show that a map built from the coil flux, the flux of the current inside the pla
 boundary and a remainder comes within 0.001 of the plasma-flux ceiling. On 12 October this
 three-part map was adopted as the plasma model target, together with the scaling and
 mirroring rules listed under "Carried into modelling".
+
+The feature phase (F80 to F88) built a version 1 table of unitless inputs that passes its
+build checks. DIII-D test matches training on every feature; MAST lies inside DIII-D's full
+range but in its tails, chiefly in the stretch terms of the coil pattern, where the
+extrapolation is stronger shaping on MAST's flat-top and late phases. A linear model on the
+features keeps the flux map and scores 0.014 below the hybrid ridge on DIII-D, the gap in
+the shape terms. Feature version 2 replaces the two stretch terms by one shaping quantity
+and `coil_c10` by `shafranov_lambda` in set_b, and leaves `ip_frac` unscaled.
 
 The split phase (F54 to F58) showed that the DIII-D test shots are a random draw from the
 same pool as the training shots, that near-repeats of an experiment are common on both sides
@@ -272,6 +285,28 @@ are marked as readings.
 | F78 | Current-distribution ceiling: a map rebuilt by physics from the exact masked current density scores S 0.978, the unmasked current 0.991, the present plasma-flux target 0.999; the PCA of the current costs 0.003 at 20 components and nothing at 50. | Working lists, 100 validation shots, 5,551 frames at stride 4, true q95 and betaN for every variant, coil flux under the adopted model plus the rebuilt plasma flux. S, R2 psi, 1 minus D_LCFS, consistency, then R_axis, Z_axis, kappa, tri_top, tri_bot, volume, li: (a) masked 0.9784, 0.9984, 0.9844, 0.9041; 0.934, 0.999, 0.955, 0.987, 0.983, 0.485, 0.985. (b) unmasked 0.9913, 0.9945, 0.9905, 0.9763; 0.997, 1.000, 0.902, 0.990, 0.983, 0.967, 0.996. (c) masked, divided by Ip, PCA on the native grid fitted on 16,423 training frames: 20 components 0.9755, 0.9984, 0.9790, 0.8924; 0.933, 0.996, 0.939, 0.965, 0.939, 0.492, 0.982. 50 components 0.9780, 0.9984, 0.9826, 0.9029; 0.936, 0.999, 0.953, 0.981, 0.974, 0.493, 0.985. 100 components 0.9780, 0.9984, 0.9832, 0.9026; 0.934, 0.999, 0.953, 0.982, 0.977, 0.488, 0.985. (d) plasma flux through the 50-component basis 0.9990, 1.0000, 0.9953, 0.9971; 1.000, 1.000, 0.991, 0.996, 0.995, 1.000, 0.998. Mask: boundary found on 5,551 of 5,551 frames; share of the absolute current outside the boundary, median 0.063 (5th to 95th percentile 0.038 to 0.114); masked current over the measured Ip, median 0.9975 (0.989 to 1.007). Runtime 85 s with 8 workers. | Recorded without a decision on the target. The numbers to weigh: the mask drops 6 percent of the current and with it the volume term (0.485 against 0.967 unmasked) while the unmasked current keeps the R2 psi lower (0.9945 against 0.9984); the plasma-flux target has no such loss at 50 components (0.9990). |
 | F79 | The loss of the masked current (variant a of F78) is the vacuum remainder, the plasma target minus the flux of the masked current: adding it back restores the map exactly, it sits in a few components, and a ridge on the currents predicts most of it. | Run of 12 October on the working lists, the same 5,551 validation frames as F78, true q95 and betaN for every variant. (e) variant a plus the exact remainder: 1.0000 on every term; largest error 1.33e-16 of the frame's flux range. Remainder RMS over the frame's flux range (max minus min of the true map), median: all frames 0.0105 (5th to 95th percentile 0.0040 to 0.0305), rising 0.0193 (1,103 frames), flat-top 0.0093 (4,308), late 0.0143 (140). Variance of the training remainder (16,423 frames) held by the leading components: 5 components 0.9978, 10 components 0.9998, 20 components 1.0000. S, consistency, volume: (f) current at 50 components plus the remainder through its PCA: 5 components 0.9978, 0.9927, 0.996; 10 components 0.9982, 0.9944, 0.998; 20 components 0.9983, 0.9947, 0.998. (g) as f at 10 components with the coefficients predicted by a ridge (42 inputs: Ip, solenoid, toroidal field and the 18 F-coils, `__mean` and `__rate`, currents Ip-signed; alpha 1.0): 0.9973, 0.9911, 0.991. (d) plasma-flux basis at 50: 0.9990, 0.9971, 1.000. (a) 0.9784, 0.9041, 0.485. Ridge, pooled R2 of the 10 coefficients: training 0.8885, validation 0.8842. Runtime 155 s with 8 workers. | The loss of variant a is the remainder. The three-part map (coil flux, flux of the predicted current, remainder) reaches within 0.001 of the plasma-flux ceiling at 10 components (S 0.9982 against 0.9990) and within 0.002 with the remainder predicted by a ridge (0.9973); volume returns from 0.485 to 0.998 and 0.991. Reading, not tested: the remainder is coil-model error plus vessel currents; its median by phase (rising 0.019, flat-top 0.009, late 0.014) matches the coil-model accuracy of F49 on shots outside the fit (0.0235, 0.0090, 0.0133). |
 
+## Features (feature phase, 13 October)
+
+Feature version 1 (`configs/features_v1.yaml`, `docs/FEATURES.md`): 22 coil points and nine
+named terms of the coil flux divided by mu0 R0 Ip, Thomson, field and shot-position
+features, robust-scaled with DIII-D training statistics of originals and mirrors together.
+Reference of every comparison: the 1,289,474 frames of the 5,821 shots of the `train` list
+of `split_v1.json`. Medians are over all frames of a split unless a phase is named (rising,
+flat-top, late; the rule of `coil_scales.phase_of`). IQR is the training interquartile
+range. Readings that were not tested are marked as readings.
+
+| Id | Finding | Evidence | Consequence |
+| --- | --- | --- | --- |
+| F80 | The version 1 feature table is sound: rows and keys, inputs, completeness, layout, mirror, current direction and force-balance sign raise nothing to act on. | Profile of 13 October. X1: rows and keys equal the frame table on every split (1,559,340 DIII-D training, 193,359 DIII-D test and 69,075 MAST rows). X2: 41 columns read, each in `input_columns(machine, include_flags=True)` or `time_ms`. X3: the 20 kA Ip threshold removes 7 training frames and no test frame; the lowest finite share is `ts_beta_p` (0.985 on DIII-D training, 0.991 on MAST), on frames without valid Thomson. X4: smallest clearance 0.279 m on DIII-D and 0.199 m on MAST (rule 0.15 m). X5: mirroring twice returns the input on every split; against points calculated with the A and B currents exchanged (4,522 frames of 20 training shots), the mirrored points differ by 0.21 percent of the pattern's range at the median, 0.41 percent at the 95th percentile and 0.51 percent at most. X6: 96.0 to 99.9 percent of the negative-Ip training values of each named term lie inside the positive-Ip 1st to 99th percentile band; largest median shift `coil_c11`, -0.54 IQR. X7: median 4 pi (R0/a0) `coil_c10` on flat-top frames -2.259 on DIII-D and -1.485 on MAST (K9: -2.096 and -1.351); signs and order match, the order Shafranov's ln(8 R0/a0) predicts. | The version 1 table is used as built. |
+| F81 | DIII-D test matches training on every feature. MAST lies inside DIII-D's full range almost everywhere but in its tails, mainly in the even coil terms, and is far from DIII-D in the combined feature space. Reading, for review. | X8 (all frames): DIII-D test outside the training 1st to 99th percentile band at most 0.031 per feature, median shifts within 0.05 IQR. MAST outside the training range at most 0.013 (`coil_c30`) and at most 0.001 on every other feature; outside the band `coil_c20` 0.874 (median shift -3.97 IQR), `coil_pt_12` 0.800, `coil_pt_11` 0.757, `coil_c02` 0.693 (-2.28 IQR), `coil_pt_18` 0.468, `resistive_age` 0.373, `q_cyl` 0.283. X9, MAST outside the band by phase: `coil_c20` rising 0.527, flat-top 0.938, late 0.812; `coil_c02` 0.992, 0.709, 0.104. X10 (scaled features, nearest of 200,000 training frames, 5,000 frames per split, seed 0), median distance on validation, DIII-D test and MAST: set_a 0.230, 0.236 and 1.027, with 0.435 of MAST frames beyond the validation 99th percentile; set_b 0.421, 0.426 and 4.431, with 1.000 beyond. With the mirrored training frames added, MAST's median is 1.026 and 4.426. The coil groups carry 0.67 (set_a) and 0.83 (set_b) of MAST's squared distance at the median. | For review. The model extrapolates on MAST in shape. set_a is the default coil form. The bounded-network and clipping options stay as configuration switches. |
+| F82 | The current-free (vacuum) relation `coil_c20` + `coil_c02` = (a0 / 2 R0) `coil_c10` holds on both machines to within the leakage of the order-3 fit. Expressed as one shaping quantity, the stretch terms show that MAST's rising phase matches DIII-D's and that the extrapolation is stronger shaping on MAST's flat-top and late phases. | Notebook 06 section 6b. Median abs(residual) over median abs(`coil_c20`): DIII-D training 0.028, DIII-D test 0.027, MAST 0.081 (0.074 to 0.084 by phase), against 0.026 and 0.061 for the current-free field R^4 - 4 R^2 Z^2 sampled at the layout points and fitted the same way at each machine's radii. Residual median and IQR: DIII-D training -0.00073 and 0.00065, MAST -0.00345 and 0.00074; 0.970 of MAST frames outside the training band (median shift -4.20 IQR). `shaping` = (`coil_c02` - `coil_c20`) / 2: MAST outside the band 0.388 (median shift +1.59 IQR), against 0.874 for `coil_c20` and 0.693 for `coil_c02`; by phase rising 0.031 (-0.08 IQR), flat-top 0.460 (+1.66), late 0.370 (+2.16); DIII-D test 0.025. X10 with `ip_frac` unscaled, set_b median distance on MAST 4.348, and 2.582 with `shaping` in place of `coil_c20` and `coil_c02`; on validation 0.382 and 0.371; MAST beyond the validation 99th percentile 1.000 and 0.932. | Reading: the residual is a machine signature (constant offset, same spread); at the backup radii of F88 it falls inside DIII-D's band. Feature version 2 replaces `coil_c20` and `coil_c02` by `shaping` in set_b and drops the residual; set_b's MAST median distance falls 41 percent (4.35 to 2.58, `ip_frac` unscaled in both; 42 percent against version 1's 4.43). |
+| F83 | `ip_frac`, bounded in [0, 1], puts 2 percent of its robust-scaled values beyond 10 on every split, training included; unscaled, it tightens DIII-D's own distances. | X11: share of scaled `ip_frac` beyond 10 in magnitude 0.0215 on training, 0.0219 on validation, 0.0208 on DIII-D test, 0.0205 on MAST (training median 0.982 and IQR 0.054, `scaler.json`). X10 (notebook 06 section 6b), set_a median distance with `ip_frac` unscaled against version 1: validation 0.194 against 0.230, DIII-D test 0.202 against 0.236, MAST 0.956 against 1.027; the validation 99th percentile falls from 1.060 to 0.807, so MAST's share beyond it rises from 0.435 to 0.859. set_b: validation 0.382 against 0.421, MAST 4.348 against 4.431. X16: the scores of both sets are unchanged to the fourth decimal (0.9050, 0.9037), as for any affine rescaling of one ridge input. | `ip_frac` enters unscaled in version 2. |
+| F84 | Dividing the coil flux by mu0 R0 Ip removes the factor the raw currents share with Ip, and the shared scale keeps the pattern. | X12 on 200,000 training frames: median abs(r) with signed Ip 0.045 for the coil features (largest 0.154, `coil_c11`) against 0.795 for the raw currents (largest 0.942, `magnetics_F6A`); with abs(Ip) 0.177 against 0.273; median abs(r) between columns 0.346 against 0.532. X13 (notebook 06 section 3): the coil points share one median (0.02165) and one IQR (0.07182); the scaled pattern correlates with the unscaled one at 1.0 on every frame shown. | The scaling decision (unitless by physics first, one shared scale per pattern group) is confirmed. |
+| F85 | `shafranov_lambda` against `ts_beta_p` has the same intercept on both machines, but MAST's slope is half to two-thirds of DIII-D's. Reading, for review. | X14, line over the frames inside both 1st to 99th percentile bands; slope, intercept, r, residual standard deviation, median offset from the training line. All frames: DIII-D training 2.964, 0.473, 0.736, 0.229, -0.006; DIII-D test 2.879, 0.473, 0.730, 0.223, -0.014; MAST 1.536, 0.466, 0.607, 0.109, -0.174. Flat-top: 3.043, 0.436, 0.746, 0.222, 0.000; 2.973, 0.433, 0.738, 0.214, -0.011; 1.960, 0.418, 0.715, 0.092, -0.151. Candidate causes, not tested: the plasma's size relative to the nominal a0, the large-aspect-ratio form of the formula at MAST's aspect ratio, and the Thomson viewing geometry. | For review. No feature is scaled with MAST's own statistics. `shafranov_lambda` is `coil_c10` with a per-machine aspect-ratio correction and enters set_b in place of `coil_c10` in version 2. |
+| F86 | In plasma-time units MAST's current changes faster than DIII-D's and MAST shots end before the current profile relaxes. Reading. | X15: band width (1st to 99th percentile) of the 50 ms Ip slope on MAST over DIII-D training 9.75 in kA/s and 4.30 as `ip_rate_rel` (the slope over Ip times the resistive time), medians 0.105 on DIII-D training and -0.018 on MAST. `resistive_age` median 0.805 on DIII-D training and 0.181 on MAST (band width 0.21 of DIII-D's); time since the Ip rise, median 2.63 s and 0.25 s. Share of frames with abs(`ip_rate_rel`) above 1, the current changing by more than its own size per resistive time: 0.595 on MAST, 0.392 on DIII-D training (above 0.3: 0.824 and 0.687). Frames off the flat-top 0.248 and 0.222. `ip_rise_ms` median 2.2 ms on MAST and 14.9 ms on DIII-D. | The shot-position group is kept, with arms with and without it compared by submission. Open item 6 is answered. |
+| F87 | A linear model on the features keeps the flux map but loses part of the shape: both sets score 0.014 to 0.015 below `hybrid_ridge` on the plasma-flux target, the gap in the shape terms. On the masked-current target the features score the same while the refitted raw-input arm drops. | X16, working lists (300 training shots, 65,262 frames; 100 validation shots at stride 4), 50 components, ridge alpha 1, scalars shared by every arm. Plasma-flux target over mu0 R0 abs(Ip): S 0.9050 (set_a), 0.9037 (set_b), 0.9186 (`hybrid_ridge`); R2 psi 0.9953, 0.9951, 0.9985; consistency 0.6759, 0.6699, 0.7331, with volume 0.673, 0.647, 0.812 and li 0.570, 0.547, 0.652. S by phase, set_a against `hybrid_ridge`: rising 0.8731 and 0.8731, flat-top 0.9042 and 0.9246, late 0.8583 and 0.8942. Masked-current target (the remainder of F79 added back before scoring): set_a 0.9055, set_b 0.9048, `hybrid_ridge` refitted on the same per-Ip target 0.8947; late-phase volume of set_a 0.506 on the plasma-flux target and 0.815 on the masked-current target (set_b 0.444 and 0.791). Coefficient R2 on validation: set_a 0.4953, without the shot-position group 0.5226 (set_b 0.4730 and 0.4970), the same with `ip_frac` unscaled. Share of the per-Ip target's training variance by phase: rising 0.114, flat-top 0.333, late 0.553 (validation 0.249, 0.683, 0.067); coefficient R2 of the raw inputs on training frames 0.390 overall and 0.086 on late frames. | Reading: the raw-input arm's drop on the masked target is confounded by its per-Ip form; the clean facts are that the features carry no remainder information and that late-phase volume recovers when the remainder leaves the target. The shot-position group overfits linearly, independent of `ip_frac` scaling. Features only (no raw currents) stands; the loss weighting across frames is an explicit choice in the model phase. |
+| F88 | At the backup MAST radii (R0 0.70 m, a0 0.50 m, Morris 1998) the even coil terms centre on DIII-D's, but `coil_c02`, `coil_c12` and the inboard points move further out, `shaping` flips to below DIII-D's, and the X14 intercept and `shafranov_lambda` drop; set_a's MAST distance is unchanged. | `backup_radii_check.md`: MAST test features rebuilt with the radii passed as an override (DIII-D, `machines.py` and the scaler unchanged); layout clearance 0.162 m (rule 0.15 m). Version 1 radii against backup radii, against DIII-D training: outside the band `coil_c20` 0.874 and 0.012 (median shift -3.97 and -0.29 IQR), `coil_c30` 0.272 and 0.012, `coil_c02` 0.693 and 0.874 (-2.28 and -2.78 IQR); median shift of `coil_c12` +1.76 and +2.58 IQR; inboard points move out (`coil_pt_05` 0.274 and 0.967, `coil_pt_03` 0.047 and 0.751), outboard points move in (`coil_pt_14` 0.444 and 0.008). `shaping` median 0.0235 and 0.0151 against DIII-D's 0.0187 (median shift +1.59 and -1.17 IQR). `vacuum_residual` outside the band 0.970 and 0.000; ratio to `coil_c20` 0.081 and 0.026, against the R^4 - 4 R^2 Z^2 benchmark 0.061 and 0.057. X14 intercept 0.466 and 0.128 on all frames, 0.418 and 0.075 on flat-top; slope 1.536 and 1.730, 1.960 and 2.556; median offset from the training line -0.174 and -0.429. `shafranov_lambda` median 0.633 and 0.236 (training 1st percentile 0.240), outside the band 0.002 and 0.514. X10 with `ip_frac` unscaled, MAST median distance: set_a 0.956 and 0.982; set_b 4.348 and 3.132; set_b with `shaping` 2.582 and 2.209. | The reference radii stay R0 0.85 m and a0 0.65 m (Sykes et al. 2001, Table 1); the backup radii are a case in the target phase's Y11. |
+
 ### Carried into modelling
 
 - DIII-D coil model: shaping coils as stored plus the flat solenoid term (F47, F48).
@@ -283,8 +318,9 @@ are marked as readings.
 - PCA with 50 components for the plasma part (F63).
 - Split `splits/split_v1.json`; every score reported for all validation shots and for the
   shots without a near-repeat in training (F57, F58).
-- Up-down mirroring with recalculated coil flux, to give the model symmetric behaviour;
-  DIII-D has about 2 percent double-null frames, 1.8 percent on the fit shots (F51, F52).
+- Up-down mirroring, to give the model symmetric behaviour; DIII-D has about 2 percent
+  double-null frames, 1.8 percent on the fit shots (F51, F52). The method is the feature
+  flip of the decisions of 12 October below, corrected on 13 October (F80).
 - Earliest rising frames: 5 to 6 percent leftover, a candidate for rate-of-change features
   (F50).
 - The core residual (F67) points at how current and pressure are spread inside the plasma.
@@ -324,12 +360,32 @@ are marked as readings.
     together, and applied unchanged to MAST, with one shared scale per pattern group (the
     coil-pattern sample points). MAST's own statistics are used only for a feature where the
     evidence points to an instrument difference.
-  - Mirroring is on from the first model, applied on the fly in the data loader: A and B
-    coil currents swapped and the coil flux recalculated, the plasma target and the Thomson
-    Z positions flipped; Z_axis changes sign, tri_top and tri_bot swap, q95 and betaN are
-    unchanged. PCA bases are fitted on originals and mirrors together.
+  - Mirroring is on from the first model, applied on the fly in the data loader. It is a
+    flip of the coil-pattern features and the target together: the sample points trade
+    places across the midplane and the odd terms change sign; Z_axis changes sign, tri_top
+    and tri_bot exchange, q95 and betaN are unchanged. PCA bases are fitted on originals and
+    mirrors together. The A/B coil-current swap is not exact (the shipped coils sit 5 to
+    10 mm off a mirror, F51) and differs from the feature flip by 0.4 percent of the
+    pattern's range at the 95th percentile (X5, F80). Corrected on 13 October; the earlier
+    text described the current swap with the coil flux recalculated.
   - The MAST remainder stays at zero for this phase; a physics model of the vessel currents
     is a later step.
+- Decisions of 13 October (F80 to F88):
+  - Feature version 2 scope: in set_b, `shaping` replaces `coil_c20` and `coil_c02` and
+    `shafranov_lambda` replaces `coil_c10`; the vacuum residual is not a feature; `ip_frac`
+    enters unscaled; `ts_te_peaking` is a candidate if a mean Te summary exists. set_a
+    remains the default coil form (F81 to F83, F85).
+  - Machine constants verified from published sources: MAST R0 0.85 m and a0 0.65 m (Sykes
+    et al. 2001, Table 1); MAST toroidal-field turns 24 (Morris 1998, consistent with Sykes
+    et al. 2001 and Berkery et al. 2021); DIII-D R0 1.67 m and a0 0.67 m (National Academies
+    2019 report); DIII-D toroidal-field turns 144 (F74). The source and `verified` fields in
+    `fusion_eq/machines.py` still carry the earlier entries and are to be updated to these
+    references.
+  - Loss: the flux of the predicted current is compared with the flux of the true current
+    inside the boundary (Ip G s), not with the full map.
+  - Loss weighting: the per-Ip target's training variance sits mostly in low-Ip frames (late
+    frames hold 0.553 of it on the working lists, F87); this is the evidence for an explicit
+    weighting across frames in the model phase.
 
 ## Use of MAST labels
 
@@ -354,7 +410,8 @@ phase of this project uses it for those purposes.
 5. Frame-level counts of failed and placeholder labels (F21).
 6. The repeat-shot hypothesis (F09) is resolved by the split phase (F56): near-repeats are
    common and equally common in test and training. The share of changing-current frames on
-   MAST (F13) remains open.
+   MAST (F13) is answered by F86: 0.595 of MAST frames have the current changing by more than
+   its own size per resistive time, against 0.392 on DIII-D training.
 7. Resolved. The 62 training shots without a valid core Thomson profile (frame table) and
    the 53 reported by QA differ by definition only, on one- and two-frame shots. Frame table:
    `ts_core_any_valid` is false when no frame has a valid slice (at least half the channels

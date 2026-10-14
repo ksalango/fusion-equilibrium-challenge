@@ -247,7 +247,7 @@ def plasma_target_fn(table: GreenTable, frames_by_shot: dict[str, pd.DataFrame],
 
 
 def mean_plasma_shape(shot_ids, data_root: Path | str, target_fn, frames_by_shot: dict[str, pd.DataFrame],
-                      cache_dir: Path | str, tag: str, split: str = "diii_d_train") -> tuple[np.ndarray, int]:
+                      cache_dir: Path | str, tag: str, split: str = "diii_d_train", read_only: bool = False) -> tuple[np.ndarray, int]:
     """Mean of ``T / |Ip|`` over all frames of the shots, cached under ``cache_dir``.
 
     Args:
@@ -257,16 +257,19 @@ def mean_plasma_shape(shot_ids, data_root: Path | str, target_fn, frames_by_shot
         frames_by_shot: Frame-table rows per shot, for ``ip__mean``.
         cache_dir, tag: Cache folder and the tag of the coil model.
         split: Labelled split of the shots.
+        read_only: Raise ``baseline.CacheMissing`` instead of computing an absent mean.
 
     Returns:
         ``(mean shape, frames averaged)``.
     """
     cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
     path = cache_dir / f"mean_shape_{bl.hash_of_ids(shot_ids)}_{tag}.npz"
     if path.is_file():
         with np.load(path, allow_pickle=False) as f:
             return f["mean"], int(f["n"])
+    if read_only:
+        raise bl.CacheMissing(f"{path} is not in the cache; this run only reads the cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
     acc = targets.MeanShapeAccumulator()
     for shot_id, maps in bl.shot_maps(sorted(set(shot_ids)), data_root, split):
         acc.add(target_fn(shot_id, maps), frames_by_shot[shot_id]["ip__mean"].to_numpy(dtype=np.float64))
@@ -278,7 +281,7 @@ def mean_plasma_shape(shot_ids, data_root: Path | str, target_fn, frames_by_shot
 
 def fit_model_set(train_frames: pd.DataFrame, train_ids: list[str], data_root: Path | str, table: GreenTable,
                   params: bl.BaselineParams, cache_dir: Path | str, scales=ADOPTED, machine: str = "DIII-D",
-                  split: str = "diii_d_train", log=print) -> ModelSet:
+                  split: str = "diii_d_train", log=print, read_only: bool = False) -> ModelSet:
     """Fits the four models on the training list; bases, coefficients and the mean shape are cached.
 
     Args:
@@ -293,6 +296,8 @@ def fit_model_set(train_frames: pd.DataFrame, train_ids: list[str], data_root: P
         machine: Machine name.
         split: Labelled split of the shots.
         log: Progress printer.
+        read_only: Read bases, coefficients and the mean shape from the cache only
+            (``baseline.CacheMissing`` when one is absent); nothing is written.
     """
     cfg = machine_config(machine)
     scales = adopted_scales(machine, table.columns) if isinstance(scales, str) and scales == ADOPTED else scales
@@ -303,14 +308,16 @@ def fit_model_set(train_frames: pd.DataFrame, train_ids: list[str], data_root: P
     target_fn = plasma_target_fn(table, frames_by_shot, scales, cfg)
     tag = f"{PLASMA_TAG}_{scales.source.split(',')[0] or 'scales'}"
 
-    basis_psi, s1 = bl.cached_basis(train_ids, params, data_root, cache_dir, split=split)
+    basis_psi, s1 = bl.cached_basis(train_ids, params, data_root, cache_dir, split=split, read_only=read_only)
     log(f"basis of the stored maps: {basis_psi.n_components} components over {basis_psi.n_frames} frames, {s1:.0f} s")
-    basis_plasma, s2 = bl.cached_basis(train_ids, params, data_root, cache_dir, split=split, target=target_fn, tag=tag)
+    basis_plasma, s2 = bl.cached_basis(train_ids, params, data_root, cache_dir, split=split, target=target_fn, tag=tag,
+                                         read_only=read_only)
     log(f"basis of the plasma target: {basis_plasma.n_components} components over {basis_plasma.n_frames} frames, {s2:.0f} s")
-    coefs_psi = bl.encode_shots(train_ids, basis_psi, data_root, cache_dir, split)
-    coefs_plasma = bl.encode_shots(train_ids, basis_plasma, data_root, cache_dir, split, target=target_fn, tag=tag)
+    coefs_psi = bl.encode_shots(train_ids, basis_psi, data_root, cache_dir, split, read_only=read_only)
+    coefs_plasma = bl.encode_shots(train_ids, basis_plasma, data_root, cache_dir, split, target=target_fn, tag=tag,
+                                   read_only=read_only)
     log(f"{coefs_psi.shape[0]} training frames encoded in both bases")
-    mean_shape, n_mean = mean_plasma_shape(train_ids, data_root, target_fn, frames_by_shot, cache_dir, tag, split)
+    mean_shape, n_mean = mean_plasma_shape(train_ids, data_root, target_fn, frames_by_shot, cache_dir, tag, split, read_only)
     log(f"mean plasma shape over {n_mean} frames")
 
     signed = targets.signed_frames(train_frames, cfg)

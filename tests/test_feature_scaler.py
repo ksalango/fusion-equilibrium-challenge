@@ -137,3 +137,32 @@ def test_feature_matrix_reads_mirrors_and_scales(built, tmp_path):
     assert np.allclose(xm[:, j], -x[:, j], atol=1e-6) and np.array_equal(xm[:, columns.index("q_cyl")], x[:, columns.index("q_cyl")])
     xa, columns_a = fe.feature_matrix("diii_d_train", None, "set_a", config=CONFIG, scaler=scaler, root=root)
     assert xa.shape == (len(built), CONFIG.layout.n_points + 7) and columns_a[0] == "coil_pt_00"
+
+
+def test_with_identity_unscales_one_column_and_keeps_the_rest(built):
+    scaler = RobustScaler.fit(built, fe.mirror_features(built, CONFIG), CONFIG)
+    variant = scaler.with_identity(["ip_frac"])
+    assert variant.source["ip_frac"] == [0.0, 1.0] and variant.rules["ip_frac"]["scale"] == "none"
+    assert scaler.rules["ip_frac"]["scale"] == "robust" and scaler.source["ip_frac"] != [0.0, 1.0]
+    x, y = scaler.transform(built, "DIII-D"), variant.transform(built, "DIII-D")
+    j = scaler.columns.index("ip_frac")
+    finite = built["ip_frac"].notna().to_numpy()
+    assert np.array_equal(y[finite, j], built["ip_frac"].to_numpy()[finite])
+    assert np.array_equal(np.delete(x, j, axis=1), np.delete(y, j, axis=1))
+    with pytest.raises(ValueError, match="scale group"):
+        scaler.with_identity(["coil_pt_00"])
+    with pytest.raises(KeyError):
+        scaler.with_identity(["shaping"])
+
+
+def test_extended_appends_columns_with_their_own_statistics(built):
+    scaler = RobustScaler.fit(built, fe.mirror_features(built, CONFIG), CONFIG)
+    original = built.assign(extra=2.0 * built["q_cyl"])
+    extra = RobustScaler.fit_rules(original, original, {"extra": dict(fc.ROBUST_RULE)})
+    both = scaler.with_identity(["ip_frac"]).extended(extra)
+    assert both.columns == (*scaler.columns, "extra") and both.source["extra"] == extra.source["extra"]
+    assert both.source["q_cyl"] == scaler.source["q_cyl"] and both.source["ip_frac"] == [0.0, 1.0]
+    x = both.transform(original, "DIII-D", ["q_cyl", "extra"])
+    assert np.array_equal(x[:, 0], scaler.transform(built, "DIII-D", ["q_cyl"])[:, 0])
+    with pytest.raises(ValueError, match="both"):
+        scaler.extended(scaler)

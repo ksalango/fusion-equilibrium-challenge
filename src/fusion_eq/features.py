@@ -293,17 +293,31 @@ class MachineResources:
 
 
 def load_resources(machine: str, config: FeatureConfig, data_root: Path | str = dataset.DEFAULT_DATA_ROOT,
-                   green_dir: Path | str = DEFAULT_GREEN_DIR, cache_dir: Path | str | None = None) -> MachineResources:
+                   green_dir: Path | str = DEFAULT_GREEN_DIR, cache_dir: Path | str | None = None,
+                   r0_m: float | None = None, a0_m: float | None = None, radii_source: str = "") -> MachineResources:
     """Point table (from the cache, or built from the geometry of one public test shot),
-    adopted coil model and constants of a machine."""
+    adopted coil model and constants of a machine.
+
+    Args:
+        r0_m, a0_m: Reference radii in metres used instead of the machine's constants, for
+            diagnostics; the layout points move with them and the point table is cached
+            under its own key. ``machines.py`` is not changed.
+        radii_source: Where the override radii come from, written to the record.
+    """
     cfg = machine_config(machine)
+    r0 = cfg.major_radius.value if r0_m is None else float(r0_m)
+    a0 = cfg.minor_radius.value if a0_m is None else float(a0_m)
     grid_table = GreenTable.load(Path(green_dir) / f"green_{cfg.file_prefix.split('_')[0]}.npz")
     table, table_record = cp.load_or_build_point_table(config.layout, cfg, grid_table, data_root,
-                                                       green_dir if cache_dir is None else cache_dir)
+                                                       green_dir if cache_dir is None else cache_dir, r0, a0)
     scales = adopted_scales(machine, table.columns)
     record = {"constants": cfg.constants_record(), "coil_model": scales.to_dict(), "point_table": table_record,
               "geometry_hash": table.geometry_hash, "points_hash": table.points_hash, "n_filaments": table.n_filaments}
-    return MachineResources.from_machine(cfg, table, scales, record)
+    if r0_m is not None or a0_m is not None:
+        record["radii_override"] = {"r0_m": r0, "a0_m": a0, "source": radii_source}
+    resources = MachineResources.from_machine(cfg, table, scales, record)
+    resources.r0_m, resources.a0_m = r0, a0
+    return resources
 
 
 # ------------------------------------------------------------------------------ context

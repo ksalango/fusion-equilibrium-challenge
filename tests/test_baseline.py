@@ -215,3 +215,54 @@ def test_parallel_scoring_and_reference_cache_match_the_single_process_path(data
     assert one.finalize() == two.finalize() and one.finalize([True, False]) == two.finalize([True, False])
     assert 0.0 < one.finalize()["S"] < 1.0
     assert bl.default_workers() >= 1
+
+
+def test_subset_references_score_every_second_frame_as_a_stride_of_two(data_root, starter):
+    ids = ["a1", "b2"]
+    truth = {s: bl.load_truth(s, data_root) for s in ids}
+    rng = np.random.default_rng(1)
+    rough = {s: bl.Prediction(t["psi"] * 0.9 + rng.normal(scale=0.02, size=t["psi"].shape).astype(np.float32),
+                              t["q95"] + 0.3, t["betaN"] * 1.1) for s, t in truth.items()}
+    full = bl.build_references(ids, data_root, workers=1, cache_dir=None)
+    every_second = {s: np.arange(0, len(t["q95"]), 2) for s, t in truth.items()}
+    subset = bl.subset_references(full, every_second, data_root)
+    assert subset.shot_ids == ids and subset.frame_stride == 1 and set(subset.frames) == set(ids)
+    stride_two = bl.build_references(ids, data_root, frame_stride=2, workers=1, cache_dir=None)
+    for s0, s1 in zip(subset.ref_stats, stride_two.ref_stats):
+        assert all(np.allclose(np.asarray(s0[k]), np.asarray(s1[k])) for k in s0)
+    assert [r[3] for r in subset.refs] == pytest.approx([r[3] for r in stride_two.refs])
+    # Predictions cover every frame and are cut to the subset; the result equals a stride of two.
+    a = bl.score_local(rough, ids, data_root, references=subset, workers=1)
+    b = bl.score_local({s: bl.Prediction(p.psirz[::2], p.q95[::2], p.betaN[::2]) for s, p in rough.items()}, ids, data_root,
+                       frame_stride=2, references=stride_two, workers=1)
+    fa, fb = bl.score_terms(a.finalize()), bl.score_terms(b.finalize())
+    assert a.psi_sign == b.psi_sign and fa.keys() == fb.keys()
+    assert all(fa[k] == pytest.approx(fb[k], rel=1e-12, abs=1e-12) for k in fa if np.isfinite(fa[k]))
+    # A shot without a selected frame is left out; a given flux sign is used as it is.
+    only_b2 = bl.subset_references(full, {"b2": np.array([1, 3])}, data_root)
+    assert only_b2.shot_ids == ["b2"] and only_b2.ref_stats[0]["psi_n"] == 2 * 65 * 65
+    flipped = {s: bl.Prediction(-t["psi"], t["q95"], t["betaN"]) for s, t in truth.items()}
+    chosen = bl.score_local(flipped, ["b2"], data_root, references=only_b2, workers=1)
+    forced = bl.score_local(flipped, ["b2"], data_root, references=only_b2, workers=1, psi_sign=1.0)
+    assert chosen.psi_sign == -1.0 and chosen.finalize()["S"] == pytest.approx(1.0, abs=1e-6)
+    assert forced.psi_sign == 1.0 and forced.finalize()["S"] < 0.5
+
+
+def test_read_only_caches_raise_instead_of_writing(data_root, tmp_path):
+    maps = ft.read_flux_maps(["a1", "b2"], "diii_d_train", data_root)
+    basis = bl.fit_flux_basis([maps], n_components=2)
+    empty = tmp_path / "empty"
+    with pytest.raises(bl.CacheMissing):
+        bl.encode_shots(["a1"], basis, data_root, empty, read_only=True)
+    with pytest.raises(bl.CacheMissing):
+        bl.cached_basis(["a1", "b2"], bl.BaselineParams(n_components=2), data_root, empty, read_only=True)
+    with pytest.raises(bl.CacheMissing):
+        bl.build_references(["a1"], data_root, workers=1, cache_dir=empty, read_only=True)
+    assert not empty.exists()
+    # Present entries are read as usual.
+    cache = tmp_path / "cache"
+    written = bl.encode_shots(["a1", "b2"], basis, data_root, cache)
+    assert np.array_equal(bl.encode_shots(["a1", "b2"], basis, data_root, cache, read_only=True), written)
+    fitted, _ = bl.cached_basis(["a1", "b2"], bl.BaselineParams(n_components=2), data_root, cache)
+    again, seconds = bl.cached_basis(["a1", "b2"], bl.BaselineParams(n_components=2), data_root, cache, read_only=True)
+    assert seconds == 0.0 and np.array_equal(again.components, fitted.components)

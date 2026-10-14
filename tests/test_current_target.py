@@ -160,3 +160,33 @@ def test_plasma_mask_and_statistics(starter):
     assert stats["masked_total_over_ip"] == pytest.approx(1 - stats["dropped_abs_share"], rel=1e-9)
     empty = ct.mask_statistics(j, np.zeros_like(mask), GRID_R, GRID_Z, ip_ka=np.nan)
     assert not empty["boundary_found"] and empty["dropped_abs_share"] == 1.0 and np.isnan(empty["masked_total_over_ip"])
+
+
+def test_load_or_build_without_writing_builds_in_memory(tmp_path):
+    built = ct.PlasmaResponse.load_or_build("DIII-D", GRID_R, GRID_Z, tmp_path / "none", write=False)
+    assert not (tmp_path / "none").exists()
+    cached = ct.PlasmaResponse.load_or_build("DIII-D", GRID_R, GRID_Z, tmp_path)
+    assert np.array_equal(built.green, cached.green)
+
+
+def test_masks_pack_and_unpack():
+    rng = np.random.default_rng(0)
+    masks = rng.random((3, 65, 65)) > 0.6
+    packed = ct.pack_masks(masks)
+    assert packed.dtype == np.uint8 and packed.shape == (3, (65 * 65 + 7) // 8)
+    assert np.array_equal(ct.unpack_masks(packed, (65, 65)), masks)
+    assert ct.unpack_masks(ct.pack_masks(np.zeros((0, 65, 65), dtype=bool)), (65, 65)).shape == (0, 65, 65)
+
+
+def test_shot_masks_are_the_plasma_masks_of_the_strided_maps(starter, tmp_path):
+    from tests.conftest import write_shot
+    shot = make_d3d_shot(n_frames=5)
+    folder = tmp_path / "diii_d_train"
+    folder.mkdir()
+    write_shot(folder / "d3d_shot_7.parquet", shot)
+    psi = np.asarray(shot["efit_psirz"], dtype=np.float32)
+    for stride in (1, 2):
+        packed = ct.shot_masks("7", str(tmp_path), "diii_d_train", stride, GRID_R, GRID_Z)
+        masks = ct.unpack_masks(packed, (GRID_Z.size, GRID_R.size))
+        expected = np.stack([ct.plasma_mask(p, GRID_R, GRID_Z, "DIII-D") for p in psi[::stride]])
+        assert masks.shape[0] == len(psi[::stride]) and np.array_equal(masks, expected) and masks.any()

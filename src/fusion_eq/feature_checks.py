@@ -416,7 +416,8 @@ def direction_comparison(table: pd.DataFrame, direction, columns: Sequence[str])
 
 
 # ------------------------------------------------------------------------- stretch terms
-def vacuum_residual(table: pd.DataFrame, machine: str | MachineConfig) -> np.ndarray:
+def vacuum_residual(table: pd.DataFrame, machine: str | MachineConfig, r0_m: float | None = None,
+                    a0_m: float | None = None) -> np.ndarray:
     """``coil_c20 + coil_c02 - (a0 / (2 R0)) coil_c10`` per row, without units
     (diagnostic for feature version 2).
 
@@ -430,9 +431,12 @@ def vacuum_residual(table: pd.DataFrame, machine: str | MachineConfig) -> np.nda
     Args:
         table: Rows with ``coil_c10``, ``coil_c20`` and ``coil_c02``.
         machine: Machine of the rows; R0 and a0 come from ``machines.py``.
+        r0_m, a0_m: Radii the rows were built with, when they differ from the machine's
+            (a diagnostic build with overridden radii).
     """
     cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
-    r0, a0 = cfg.major_radius.value, cfg.minor_radius.value
+    r0 = cfg.major_radius.value if r0_m is None else float(r0_m)
+    a0 = cfg.minor_radius.value if a0_m is None else float(a0_m)
     c10, c20, c02 = (table[c].to_numpy(dtype=np.float64) for c in ("coil_c10", "coil_c20", "coil_c02"))
     return c20 + c02 - (a0 / (2.0 * r0)) * c10
 
@@ -444,9 +448,11 @@ def shaping(table: pd.DataFrame) -> np.ndarray:
     return 0.5 * (table["coil_c02"].to_numpy(dtype=np.float64) - table["coil_c20"].to_numpy(dtype=np.float64))
 
 
-def stretch_quantities(table: pd.DataFrame, machine: str | MachineConfig) -> pd.DataFrame:
+def stretch_quantities(table: pd.DataFrame, machine: str | MachineConfig, r0_m: float | None = None,
+                       a0_m: float | None = None) -> pd.DataFrame:
     """``vacuum_residual`` and ``shaping`` of every row, on the table's index."""
-    return pd.DataFrame({"vacuum_residual": vacuum_residual(table, machine), "shaping": shaping(table)}, index=table.index)
+    return pd.DataFrame({"vacuum_residual": vacuum_residual(table, machine, r0_m, a0_m), "shaping": shaping(table)},
+                        index=table.index)
 
 
 def fitted_terms(layout: Layout, psi, r0_m: float, a0_m: float) -> dict[str, float]:
@@ -695,5 +701,26 @@ def pooled_r2(true, pred) -> float:
     pooled over every column."""
     t = np.asarray(true, dtype=np.float64)
     p = np.asarray(pred, dtype=np.float64)
+    if t.shape[0] < 2:
+        return float("nan")
     total = float(((t - t.mean(axis=0)) ** 2).sum())
     return 1.0 - float(((t - p) ** 2).sum()) / total if total > 0 else float("nan")
+
+
+def pooled_r2_by_group(true, pred, labels, groups: Sequence[str]) -> dict[str, float]:
+    """``pooled_r2`` within each group of rows, each against its own group's mean; NaN for
+    a group with fewer than two rows."""
+    t = np.asarray(true, dtype=np.float64)
+    p = np.asarray(pred, dtype=np.float64)
+    labels = np.asarray(labels)
+    return {g: pooled_r2(t[labels == g], p[labels == g]) for g in groups}
+
+
+def variance_shares(true, labels, groups: Sequence[str]) -> dict[str, float]:
+    """Share of the summed squared deviation from the overall mean (pooled over columns)
+    held by each group's rows: where the variance a pooled R2 measures sits."""
+    t = np.asarray(true, dtype=np.float64)
+    labels = np.asarray(labels)
+    d2 = ((t - t.mean(axis=0)) ** 2).reshape(t.shape[0], -1).sum(axis=1) if t.shape[0] else np.zeros(0)
+    total = float(d2.sum())
+    return {g: float(d2[labels == g].sum()) / total if total > 0 else float("nan") for g in groups}

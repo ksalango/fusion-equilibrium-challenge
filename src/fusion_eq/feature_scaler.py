@@ -134,6 +134,47 @@ class RobustScaler:
                 stats[c] = list(values)
         self.target[machine] = stats
 
+    def with_identity(self, columns) -> "RobustScaler":
+        """A copy in which ``columns`` are not scaled (``scale: none``, centre 0, scale 1),
+        every other statistic unchanged; for in-memory variants.
+
+        Raises:
+            KeyError: for a column the scaler does not hold.
+            ValueError: for a column of a scale group, whose shared statistics would split.
+        """
+        out = RobustScaler.from_dict(self.to_dict())
+        for c in columns:
+            if c not in out.rules:
+                raise KeyError(f"column {c!r} is not in the scaler")
+            if out.rules[c]["scale_group"]:
+                raise ValueError(f"column {c!r} belongs to scale group {out.rules[c]['scale_group']!r}")
+            out.rules[c].update(scale="none", scale_with="source")
+            out.source[c] = [0.0, 1.0]
+            for stats in out.target.values():
+                stats.pop(c, None)
+        return out
+
+    def extended(self, other: "RobustScaler") -> "RobustScaler":
+        """A copy with ``other``'s columns appended, statistics unchanged on both sides; for
+        in-memory variants that add a column to a fitted scaler.
+
+        Raises:
+            ValueError: when the two share a column or differ in source machine.
+        """
+        shared = [c for c in other.columns if c in self.columns]
+        if shared:
+            raise ValueError(f"columns in both scalers: {shared}")
+        if other.source_machine != self.source_machine:
+            raise ValueError("the scalers were fitted on different machines")
+        out = RobustScaler.from_dict(self.to_dict())
+        add = RobustScaler.from_dict(other.to_dict())
+        out.columns = out.columns + add.columns
+        out.rules.update(add.rules)
+        out.source.update(add.source)
+        for machine, stats in add.target.items():
+            out.target.setdefault(machine, {}).update(stats)
+        return out
+
     def statistics(self, column: str, machine: str) -> list[float]:
         """``[median, interquartile range]`` used for a column on a machine."""
         if self.rules[column]["scale_with"] == "target" and machine != self.source_machine:

@@ -28,7 +28,7 @@ import numpy as np
 import scipy.sparse as sps
 from scipy.sparse.linalg import splu
 
-from fusion_eq import dataset, grad_shafranov as gs, starter_kit, targets
+from fusion_eq import dataset, grad_shafranov as gs, io, starter_kit, targets
 from fusion_eq.coil_flux import GMD_FACTOR, MU0, filament_flux
 from fusion_eq.io import sha256_of_arrays
 from fusion_eq.machines import MachineConfig, machine_config
@@ -74,6 +74,35 @@ def plasma_mask(psi_stored, grid_r, grid_z, machine: str | MachineConfig = "DIII
     z = np.asarray(grid_z, dtype=np.float64)
     contour = scorer.lcfs.extract_lcfs(np.asarray(psi_stored, dtype=np.float64), r, z, cfg.name, envelope.mask_coarse, envelope.mask_f)
     return gs.boundary_mask(contour, r, z)
+
+
+def pack_masks(masks) -> np.ndarray:
+    """Boolean masks ``(frames, nZ, nR)`` packed to bits, ``(frames, ceil(nZ nR / 8))`` uint8."""
+    m = np.asarray(masks, dtype=bool)
+    return np.packbits(m.reshape(m.shape[0], m.shape[1] * m.shape[2]), axis=1)
+
+
+def unpack_masks(packed, shape: tuple[int, int]) -> np.ndarray:
+    """Inverse of ``pack_masks`` for masks of grid ``shape`` ``(nZ, nR)``."""
+    p = np.asarray(packed, dtype=np.uint8)
+    n = int(shape[0]) * int(shape[1])
+    return np.unpackbits(p, axis=1, count=n).reshape(p.shape[0], *shape).astype(bool)
+
+
+def shot_masks(shot_id: str, data_root: str, split: str, stride: int, grid_r, grid_z, machine: str = "DIII-D") -> np.ndarray:
+    """Packed plasma masks (``plasma_mask``, ``pack_masks``) of every ``stride``-th true map
+    of one shot, in time order. Reads ``efit_psirz`` only; runs in a worker process."""
+    cfg = machine_config(machine)
+    shot = io.load_shot(dataset.shot_path(data_root, split, shot_id), ["efit_psirz"], apply=False)
+    psi = np.asarray(shot["efit_psirz"], dtype=np.float32)[::max(1, int(stride))]
+    r = np.asarray(grid_r, dtype=np.float64)
+    z = np.asarray(grid_z, dtype=np.float64)
+    scorer = starter_kit.scoring()
+    envelope = starter_kit.envelope_mask(cfg)
+    masks = np.zeros((psi.shape[0], z.size, r.size), dtype=bool)
+    for k in range(psi.shape[0]):
+        masks[k] = plasma_mask(psi[k], r, z, cfg, envelope, scorer)
+    return pack_masks(masks)
 
 
 def mask_statistics(j, mask, grid_r, grid_z, ip_ka: float) -> dict:
@@ -188,15 +217,18 @@ class PlasmaResponse:
         return cls(machine=machine, grid_r=grid_r, grid_z=grid_z, green=border_green_matrix(grid_r, grid_z))
 
     @classmethod
-    def load_or_build(cls, machine: str, grid_r, grid_z, cache_dir: Path | str = DEFAULT_CACHE_DIR) -> "PlasmaResponse":
-        """The response of a grid from the cache (``response_<machine>_<grid hash>.npz``), built and
-        written there when absent."""
+    def load_or_build(cls, machine: str, grid_r, grid_z, cache_dir: Path | str = DEFAULT_CACHE_DIR,
+                      write: bool = True) -> "PlasmaResponse":
+        """The response of a grid from the cache (``response_<machine>_<grid hash>.npz``), built
+        when absent and written there unless ``write`` is False."""
         key = sha256_of_arrays(grid_r, grid_z)[:16]
         path = Path(cache_dir) / f"response_{machine_config(machine).file_prefix.split('_')[0]}_{key}.npz"
         if path.is_file():
             with np.load(path, allow_pickle=False) as f:
                 return cls(machine=str(f["machine"]), grid_r=f["grid_r"], grid_z=f["grid_z"], green=f["green"])
         out = cls.build(machine, grid_r, grid_z)
+        if not write:
+            return out
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp.npz")
         np.savez(tmp, machine=np.array(machine), grid_r=out.grid_r, grid_z=out.grid_z, green=out.green)

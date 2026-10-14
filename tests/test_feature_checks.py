@@ -386,3 +386,26 @@ def test_json_default_converts_numpy_values():
     assert json.loads(text) == {"a": 3, "b": 0.5, "c": True, "d": [0, 1]}
     with pytest.raises(TypeError):
         json.dumps({"x": object()}, default=fc.json_default)
+
+
+def test_pooled_r2_by_group_and_variance_shares():
+    rng = np.random.default_rng(5)
+    true = rng.normal(size=(40, 3))
+    true[:10] *= 10.0                                       # the first group holds most of the variance
+    pred = true + rng.normal(scale=0.5, size=true.shape)
+    labels = np.array(["a"] * 10 + ["b"] * 29 + ["c"])
+    r2 = fc.pooled_r2_by_group(true, pred, labels, ["a", "b", "c", "d"])
+    assert r2["a"] == pytest.approx(fc.pooled_r2(true[:10], pred[:10])) and np.isnan(r2["c"]) and np.isnan(r2["d"])
+    assert r2["b"] < r2["a"]
+    shares = fc.variance_shares(true, labels, ["a", "b", "c"])
+    assert sum(shares.values()) == pytest.approx(1.0) and shares["a"] > 0.8
+    d2 = ((true - true.mean(axis=0)) ** 2).sum(axis=1)
+    assert shares["b"] == pytest.approx(d2[10:39].sum() / d2.sum())
+
+
+def test_vacuum_residual_takes_the_radii_of_the_build():
+    terms = pd.DataFrame({"coil_c10": [0.4], "coil_c20": [0.1], "coil_c02": [0.05]})
+    assert fc.vacuum_residual(terms, MAST)[0] == pytest.approx(0.15 - 0.65 / (2 * 0.85) * 0.4)
+    assert fc.vacuum_residual(terms, MAST, 0.70, 0.50)[0] == pytest.approx(0.15 - 0.50 / (2 * 0.70) * 0.4)
+    out = fc.stretch_quantities(terms, MAST, 0.70, 0.50)
+    assert out["vacuum_residual"].iloc[0] == pytest.approx(0.15 - 0.50 / 1.40 * 0.4) and out["shaping"].iloc[0] == pytest.approx(-0.025)
