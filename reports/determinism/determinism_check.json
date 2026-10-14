@@ -1,0 +1,236 @@
+{
+  "d3d_shots": [
+    "14c85cdf41",
+    "1962ebdbcf",
+    "37b75485bc",
+    "564a49a026",
+    "652ed80a9f",
+    "7cc68b9d2d",
+    "a97f03b645",
+    "e417a47b84",
+    "1360cf2498",
+    "187f9af914",
+    "1cf2a6d87d",
+    "cd9a52ab40",
+    "13e438a773",
+    "2bbbc7108e",
+    "d0881f4abd",
+    "e43f2572c5",
+    "5a5e3fec75",
+    "9fc5d2b15a",
+    "45027c603f",
+    "5df1630aa7"
+  ],
+  "mast_shots": [
+    "22ebf96cd9",
+    "4f514e8960",
+    "632728f599",
+    "658a55d5d8",
+    "b687d746cf"
+  ],
+  "inputs": "rebuilt",
+  "frame_table": {
+    "params": {
+      "window_ms": 2.0,
+      "rate_window_ms": [
+        10.0,
+        50.0
+      ],
+      "max_gap_ms": 5.0,
+      "thomson_tol_ms": 20.0,
+      "align_ip": true,
+      "psi_summary": true
+    },
+    "errors": {
+      "diii_d_train": {},
+      "mast_public_test": {}
+    },
+    "not_found": {
+      "diii_d_train": [],
+      "mast_public_test": []
+    },
+    "built_at_commit": "393318b0c6b9e6181fd4842a3a48b55261b9e0f6"
+  },
+  "features": {
+    "version": 2,
+    "config_hash": "01263fe0c4f154d2a9090cb42b4198652f0bb117bf921126580afbb7c4387568",
+    "config_hash_at_build": "01263fe0c4f154d2a9090cb42b4198652f0bb117bf921126580afbb7c4387568",
+    "built_at_commit": "e596e2b65f07bff88e6eb639c26a1ac7e5817da4",
+    "point_tables": {
+      "DIII-D": "from the cache",
+      "MAST": "from the cache"
+    },
+    "point_tables_linked": [
+      "points_d3d_506f8cc5deebb5e4.npz",
+      "points_mast_5bf4653e2274bb9e.npz",
+      "points_mast_e9ad71ba8c61a335.npz"
+    ]
+  },
+  "targets": {
+    "version": 1,
+    "config_hash": "b2192c3a01a9503b1a024e43fd60827aa2f17e9bf46087b00d84c295f4aae5de",
+    "config_hash_at_build": "b2192c3a01a9503b1a024e43fd60827aa2f17e9bf46087b00d84c295f4aae5de",
+    "built_at_commit": "c89e246de89dcf0570a24ccedc71321bbdbcce6c",
+    "stride": 1,
+    "split_name": "diii_d_train",
+    "split_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+    "object_checksums": {
+      "current_basis.npz": true,
+      "remainder_model.npz": true,
+      "flux_basis_d3d.npz": true,
+      "flux_basis_mast.npz": true,
+      "placement_d3d.npz": true,
+      "placement_mast.npz": true
+    },
+    "responses_linked": [
+      "response_d3d_eee1a968198b785d.npz",
+      "response_mast_b514009cbf4ee107.npz"
+    ],
+    "shape_numbers": {
+      "train": "scorer reference builder",
+      "validation": "scorer reference builder",
+      "local_test": "scorer reference builder"
+    }
+  },
+  "timestamp": "2026-10-14T17:44:08+00:00",
+  "repo_commit": "c89e246de89dcf0570a24ccedc71321bbdbcce6c",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "",
+  "arguments": {
+    "d3d_shots": [
+      "14c85cdf41",
+      "1962ebdbcf",
+      "37b75485bc",
+      "564a49a026",
+      "652ed80a9f",
+      "7cc68b9d2d",
+      "a97f03b645",
+      "e417a47b84",
+      "1360cf2498",
+      "187f9af914",
+      "1cf2a6d87d",
+      "cd9a52ab40",
+      "13e438a773",
+      "2bbbc7108e",
+      "d0881f4abd",
+      "e43f2572c5",
+      "5a5e3fec75",
+      "9fc5d2b15a",
+      "45027c603f",
+      "5df1630aa7"
+    ],
+    "mast_shots": [
+      "22ebf96cd9",
+      "4f514e8960",
+      "632728f599",
+      "658a55d5d8",
+      "b687d746cf"
+    ],
+    "inputs": "rebuilt",
+    "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
+    "table_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table",
+    "feature_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/features",
+    "feature_config": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/features_v2.yaml",
+    "green_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/green",
+    "targets": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/targets",
+    "target_config": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/target_v1.yaml",
+    "split": null,
+    "response_cache": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/current_target",
+    "references_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/baseline/references",
+    "report_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/determinism",
+    "work_dir": null,
+    "keep_work_dir": false,
+    "workers": null
+  },
+  "runtime_s": 19.062628984451294,
+  "python": "3.13.15",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "work_dir": "removed",
+  "results": [
+    {
+      "table": "frame table",
+      "part": "diii_d_train",
+      "n_shots": 20,
+      "note": "",
+      "rows_stored": 4585,
+      "rows_rebuilt": 4585,
+      "digest_stored": "57ebeb65e928c0fe615b3a4ed69a68668f84cf51d7d0518ca7491dfb58a10fa9",
+      "digest_rebuilt": "57ebeb65e928c0fe615b3a4ed69a68668f84cf51d7d0518ca7491dfb58a10fa9",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "frame table",
+      "part": "mast_public_test",
+      "n_shots": 5,
+      "note": "",
+      "rows_stored": 295,
+      "rows_rebuilt": 295,
+      "digest_stored": "936789d071d72f5f4fb624eb63b6105f079ea6aab037f0d4412c1c64d4e5b0dc",
+      "digest_rebuilt": "936789d071d72f5f4fb624eb63b6105f079ea6aab037f0d4412c1c64d4e5b0dc",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "features v2",
+      "part": "diii_d_train",
+      "n_shots": 20,
+      "note": "",
+      "rows_stored": 4585,
+      "rows_rebuilt": 4585,
+      "digest_stored": "1e78feaf3a97a75e1256bb17223d68377719feeb5c2953ed52572d0f81d1dab5",
+      "digest_rebuilt": "1e78feaf3a97a75e1256bb17223d68377719feeb5c2953ed52572d0f81d1dab5",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "features v2",
+      "part": "mast_public_test",
+      "n_shots": 5,
+      "note": "",
+      "rows_stored": 295,
+      "rows_rebuilt": 295,
+      "digest_stored": "196517acb94f8c9ad51d97f48e3f03944a4dc5dfa7290edd98be20845fedcee1",
+      "digest_rebuilt": "196517acb94f8c9ad51d97f48e3f03944a4dc5dfa7290edd98be20845fedcee1",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "targets v1",
+      "part": "train",
+      "n_shots": 13,
+      "note": "",
+      "rows_stored": 2951,
+      "rows_rebuilt": 2951,
+      "digest_stored": "1d1c9f214078353cd22121b5c96707666c4eb9092862fffb276d43e3a6688426",
+      "digest_rebuilt": "1d1c9f214078353cd22121b5c96707666c4eb9092862fffb276d43e3a6688426",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "targets v1",
+      "part": "validation",
+      "n_shots": 6,
+      "note": "",
+      "rows_stored": 1481,
+      "rows_rebuilt": 1481,
+      "digest_stored": "4ac68d7ee1ef1fa9a523f86fd88e97ca5064f6312fe0b4486443ac29fb6902ea",
+      "digest_rebuilt": "4ac68d7ee1ef1fa9a523f86fd88e97ca5064f6312fe0b4486443ac29fb6902ea",
+      "identical": true,
+      "values_equal": true
+    },
+    {
+      "table": "targets v1",
+      "part": "local_test",
+      "n_shots": 1,
+      "note": "",
+      "rows_stored": 153,
+      "rows_rebuilt": 153,
+      "digest_stored": "4bbcb2a0d7f7cb0f6cf71a4037a34a41621fb8c09f3dd7dfb9f8218a3c96456d",
+      "digest_rebuilt": "4bbcb2a0d7f7cb0f6cf71a4037a34a41621fb8c09f3dd7dfb9f8218a3c96456d",
+      "identical": true,
+      "values_equal": true
+    }
+  ]
+}
