@@ -409,3 +409,18 @@ def test_vacuum_residual_takes_the_radii_of_the_build():
     assert fc.vacuum_residual(terms, MAST, 0.70, 0.50)[0] == pytest.approx(0.15 - 0.50 / (2 * 0.70) * 0.4)
     out = fc.stretch_quantities(terms, MAST, 0.70, 0.50)
     assert out["vacuum_residual"].iloc[0] == pytest.approx(0.15 - 0.50 / 1.40 * 0.4) and out["shaping"].iloc[0] == pytest.approx(-0.025)
+
+
+def test_reference_differences_name_the_arguments_that_differ(tmp_path):
+    split = tmp_path / "split.json"
+    reference = {"split": str(split), "nn_train_frames": 200_000, "seed": 0, "full": False}
+    (tmp_path / "sub").mkdir()
+    current = {"split": f"{tmp_path}/sub/../split.json", "nn_train_frames": 200_000, "seed": 0, "full": False}
+    keys = ("split", "nn_train_frames", "seed", "full")
+    assert fc.reference_differences(reference, current, keys, path_keys=("split",)) == {}
+    changed = dict(current, seed=1, full=True)
+    assert fc.reference_differences(reference, changed, keys, path_keys=("split",)) == {"seed": [0, 1], "full": [False, True]}
+    assert fc.reference_differences({k: v for k, v in reference.items() if k != "seed"}, current, keys,
+                                    path_keys=("split",)) == {"seed": ["missing", 0]}
+    # Without path handling, a different spelling of the same path counts as a difference.
+    assert "split" in fc.reference_differences(reference, current, keys)

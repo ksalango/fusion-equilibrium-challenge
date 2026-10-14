@@ -29,6 +29,24 @@ add it back:
   and ``__rate`` of every current signal, Ip-signed as in ``targets.signed_frames``), fitted
   on the training frames.
 
+Four variants of the target phase follow (``docs/TARGET.md``, Part 5), each with the
+remainder of variant f at ``--h-remainder-components`` (10) unless stated:
+
+- ``h_symmetric_<k>``: the share (masked current per cell over Ip) through a basis with exact
+  up-down parity, fitted on the training frames that pass the lighter label filter
+  (``label_filter``) and have a boundary, together with their mirrors
+  (``current_basis.CurrentBasis``), at ``--symmetric-components`` (50, 60, 80). The flux of the
+  current comes from the DIII-D flux basis (``current_basis.flux_basis``).
+- ``i_placed_mast_<base>``: h at ``--symmetric-base`` (50) with the reconstructed share placed
+  onto the lattice of MAST's nodes and brought back (``lattice.placement``,
+  ``lattice.back_placement``, MAST constants of ``machines.py``) before the flux is calculated.
+- ``j_rescaled_<base>``: h at the base count with the reconstructed share rescaled to a total of
+  one.
+- ``k_ridge_<window>_<base>``: h at the base count with the remainder from a ridge, for each
+  rate window the frame table carries: 10 ms (``__rate``) always, 50 ms (``__rate50``) where
+  present. The frame table has no 50 ms rate for the toroidal field, which keeps its 10 ms
+  rate in the 50 ms ridge, so both ridges have 42 inputs.
+
 Writes ``ceiling.md`` and ``ceiling.json`` to ``--out`` (``reports/current_target/``): S, the
 four terms and the seven shape terms per variant, the mask statistics (share of ``|J|``
 dropped, masked current over Ip, boundary failures), the remainder statistics (RMS over the
@@ -50,12 +68,15 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
-from fusion_eq import baseline as bl, current_target as ct, frame_table as ft, models, split as sp, starter_kit, targets
+from fusion_eq import (baseline as bl, current_basis as cb, current_target as ct, frame_table as ft, grad_shafranov as gs,
+                       label_filter as lf, lattice as lt, models, split as sp, starter_kit, targets)
 from fusion_eq.coil_flux import GreenTable, adopted_scales
 from fusion_eq.coil_scales import REFERENCE_PHASES, phase_of
 from fusion_eq.dataset import REPO_ROOT, default_data_root, run_info
 from fusion_eq.machines import machine_config
+from fusion_eq.remainder_model import available_windows, ridge_columns, ridge_frames
 
 DEFAULT_SPLIT = REPO_ROOT / "splits" / "split_v1.json"
 DEFAULT_OUT = REPO_ROOT / "reports" / "current_target"
@@ -67,38 +88,24 @@ SHAPE_TERMS = ("r2_R_axis", "r2_Z_axis", "r2_kappa", "r2_tri_top", "r2_tri_bot",
 STAT_KEYS = ("dropped_abs_share", "masked_total_over_ip")
 # The variance share of the remainder basis is reported at these counts as well as the f variants'.
 REPORTED_REMAINDER_COMPONENTS = (5, 10, 20)
+# Label columns the lighter label filter reads besides the input columns.
+FILTER_LABELS = ("efit_q95", "efit_beta_n")
 
 
 def log(message: str) -> None:
     print(message, flush=True)
 
 
-def ridge_columns() -> list[str]:
-    """Inputs of the remainder ridge: the ``__mean`` and ``__rate`` of every current signal,
-    checked against the frame table's label guard."""
-    cfg = machine_config(MACHINE)
-    columns = [f"{name}__{kind}" for name in ft.current_signals(cfg) for kind in ("mean", "rate")]
-    return ft.assert_input_columns(columns, cfg)
+def rate_windows(table_dir: Path) -> dict[str, list[str]]:
+    """The rate windows the frame table carries, each with its ridge inputs
+    (``remainder_model.available_windows``)."""
+    return available_windows(pq.ParquetFile(ft.table_path(SPLIT_NAME, table_dir)).schema_arrow.names)
 
 
-def ridge_frames(rows: pd.DataFrame) -> pd.DataFrame:
-    """Rows with the currents in the Ip-signed frame: ``targets.signed_frames`` for the
-    ``__mean`` columns and the same sign on the matching ``__rate`` columns, so that the
-    inputs follow the target frame of the remainder."""
-    cfg = machine_config(MACHINE)
-    out = targets.signed_frames(rows, cfg)
-    s = targets.sign_of_ip(rows["ip__mean"].to_numpy(dtype=np.float64))
-    for column in targets.signed_current_columns(cfg):
-        rate = column.replace("__mean", "__rate")
-        if rate in out:
-            out[rate] = rows[rate].to_numpy(dtype=np.float64) * s
-    return out
-
-
-def strided_rows(shot_ids, table_dir: Path, stride: int) -> dict[str, pd.DataFrame]:
-    """Frame-table rows with the current columns, their rates and the phase columns, every
-    ``stride``-th frame, per shot."""
-    columns = [*ridge_columns(), "ip_over_peak", "n_frames"]
+def strided_rows(shot_ids, table_dir: Path, stride: int, extra=()) -> dict[str, pd.DataFrame]:
+    """Frame-table rows with the current columns, their rates, ``extra`` columns, the phase
+    columns and the columns of the lighter label filter, every ``stride``-th frame, per shot."""
+    columns = list(dict.fromkeys([*ridge_columns(), *extra, *FILTER_LABELS, "ip_over_peak", "n_frames"]))
     rows = bl.frames_of_shots(shot_ids, columns, table_dir)
     rows["shot"] = rows["shot"].astype(str)
     return {s: g.sort_values("frame").iloc[::stride] for s, g in rows.groupby("shot", sort=False)}
@@ -143,6 +150,7 @@ def _train_shot(shot_id: str, rows: pd.DataFrame, data_root: str, stride: int, g
     every strided frame (float32)."""
     *_, ip, coil, j, masks, stats, inside, remainder = _shot_setup(shot_id, rows, data_root, stride, green_path, response_cache)
     return {"shot": shot_id, "y": _per_ip(j * masks, ip).astype(np.float32), "remainder": remainder.astype(np.float32),
+            "boundary": np.array([s["boundary_found"] for s in stats], dtype=bool),
             "boundary_failures": sum(not s["boundary_found"] for s in stats), "n_frames": len(ip)}
 
 
@@ -156,9 +164,11 @@ def _train_remainder_coefficients(shot_id: str, rows: pd.DataFrame, data_root: s
 def _val_shot(shot_id: str, rows: pd.DataFrame, data_root: str, stride: int, green_path: str, response_cache: str,
               basis_mean: np.ndarray, basis_components: np.ndarray, components: tuple, plasma_basis_path: str,
               remainder_mean: np.ndarray, remainder_components: np.ndarray, remainder_ks: tuple, f_current_k: int,
-              ridge: dict) -> dict:
+              ridge: dict, target: dict) -> dict:
     """Validation pass: every variant's rebuilt stored-frame maps, the mask statistics and the
-    remainder statistics per frame."""
+    remainder statistics per frame. ``target`` carries what variants h to k need: the
+    symmetric basis (``mean``, ``components``), the DIII-D flux basis (``phi_mean``, ``phi``),
+    the component counts, the MAST placement and its way back, and the ridges per window."""
     table, scales, response, psi, ip, coil, j, masks, stats, inside, remainder = _shot_setup(
         shot_id, rows, data_root, stride, green_path, response_cache)
     cfg = machine_config(MACHINE)
@@ -204,6 +214,40 @@ def _val_shot(shot_id: str, rows: pd.DataFrame, data_root: str, stride: int, gre
     out["coefficients_pred"] = coef_pred
     out["maps"][f"g_remainder_ridge_{k}"] = from_target(inside_c + (coef_pred @ remainder_components[:k] + remainder_mean).reshape(psi.shape)).astype(np.float32)
 
+    # Target-phase variants: the share through the symmetric basis, its flux through the flux
+    # basis (physical flux Ip (phi_mean + Phi c), target frame times sign(Ip)).
+    share = y * float(np.prod(gs.grid_steps(table.grid_r, table.grid_z)))
+    coef_share = (share.reshape(len(ip), -1) - target["mean"]) @ target["components"].T
+    kr = target["h_remainder_k"]
+    remainder_h = (_encode(remainder, remainder_mean, remainder_components[:kr]) @ remainder_components[:kr]
+                   + remainder_mean).reshape(psi.shape)
+
+    def inside_basis(k):
+        physical = ip_a.reshape(-1, 1) * (target["phi_mean"] + coef_share[:, :k] @ target["phi"][:k])
+        return sign * physical.reshape(psi.shape)
+
+    for k in target["ks"]:
+        out["maps"][f"h_symmetric_{k}"] = from_target(inside_basis(k) + remainder_h).astype(np.float32)
+    base = target["base_k"]
+    s_base = (coef_share[:, :base] @ target["components"][:base] + target["mean"]).reshape(share.shape)
+    placed = target["back"].apply(target["place"].apply(s_base))
+    totals = s_base.sum(axis=(1, 2))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out["placement_retained"] = np.where(totals != 0, placed.sum(axis=(1, 2)) / totals, np.nan)
+        rescale = np.where(totals != 0, 1.0 / totals, 1.0)[:, None, None]
+    out["share_total_reconstructed"] = totals
+    out["maps"][f"i_placed_mast_{base}"] = from_target(sign * ip_a * cb.cell_flux(response, placed) + remainder_h).astype(np.float32)
+    inside_base = inside_basis(base)
+    # The flux is linear in the share, so the rescaled share's flux is the base flux rescaled.
+    out["maps"][f"j_rescaled_{base}"] = from_target(rescale * inside_base + remainder_h).astype(np.float32)
+    out["ridge_pred"] = {}
+    for window, model in target["ridges"].items():
+        x_w, _ = model["scaler"].transform(ridge_frames(rows))
+        pred = x_w @ model["weights"] + model["intercept"]
+        out["ridge_pred"][window] = pred
+        remainder_w = (pred @ remainder_components[:model["k"]] + remainder_mean).reshape(psi.shape)
+        out["maps"][f"k_ridge_{window}_{base}"] = from_target(inside_base + remainder_w).astype(np.float32)
+
     rms = np.sqrt(np.mean(remainder * remainder, axis=(1, 2)))
     out["stats"] = [{**s, "phase": phase_of(float(over), int(frame), int(n)), "remainder_rms": float(rms[i]),
                      "flux_range": float(flux_range[i]), "remainder_share": float(rms[i] / flux_range[i])}
@@ -216,50 +260,68 @@ def _train_items(train_rows: dict[str, pd.DataFrame], args, *extra) -> object:
             for s, g in train_rows.items())
 
 
-def fit_bases(train_rows: dict[str, pd.DataFrame], args, current_path: Path, n_current: int, remainder_path: Path,
-              n_remainder: int, workers: int) -> tuple[bl.FluxBasis, bl.FluxBasis, dict]:
-    """PCA of the masked current density per ampere and of the vacuum remainder over the
-    training frames, each cached at its path; one pass over the training shots fits whichever
-    is missing."""
-    if current_path.is_file() and remainder_path.is_file():
-        return bl.FluxBasis.load(current_path), bl.FluxBasis.load(remainder_path), {"from_cache": True}
-    acc_current, acc_remainder = bl.BasisAccumulator(), bl.BasisAccumulator()
-    failures, n_frames = 0, 0
+def fit_bases(train_rows: dict[str, pd.DataFrame], args, paths: dict[str, Path], sizes: dict[str, int],
+              keep: dict[str, np.ndarray], cell_area: float, workers: int) -> tuple[dict, dict]:
+    """Bases over the training frames, each cached at its path; one pass over the training shots
+    fits whichever is missing.
+
+    - ``current``: PCA of the masked current density per ampere (variants c, f, g).
+    - ``remainder``: PCA of the vacuum remainder.
+    - ``symmetric``: the share (masked current per cell over Ip) with exact parity, over the
+      frames that pass the lighter label filter (``keep``) and have a boundary, with their
+      mirrors (variants h to k).
+    """
+    loaders = {"current": bl.FluxBasis.load, "remainder": bl.FluxBasis.load, "symmetric": cb.CurrentBasis.load}
+    if all(p.is_file() for p in paths.values()):
+        return {name: loaders[name](p) for name, p in paths.items()}, {"from_cache": True}
+    acc = {"current": bl.BasisAccumulator(), "remainder": bl.BasisAccumulator(), "symmetric": None}
+    failures, n_frames, n_symmetric = 0, 0, 0
     for k, result in enumerate(bl._map_ordered(_train_shot, _train_items(train_rows, args), workers)):
-        acc_current.add(result["y"].astype(np.float64))
-        acc_remainder.add(result["remainder"].astype(np.float64))
+        acc["current"].add(result["y"].astype(np.float64))
+        acc["remainder"].add(result["remainder"].astype(np.float64))
+        chosen = keep[result["shot"]] & result["boundary"]
+        if chosen.any():
+            shares = result["y"][chosen].astype(np.float64) * cell_area
+            acc["symmetric"] = acc["symmetric"] or cb.CurrentBasisAccumulator(shares.shape[1:])
+            acc["symmetric"].add(shares)
+            n_symmetric += int(chosen.sum())
         failures += result["boundary_failures"]
         n_frames += result["n_frames"]
         if (k + 1) % 50 == 0:
             log(f"  training pass: {k + 1}/{len(train_rows)} shots, {n_frames} frames")
-    out = []
-    for path, acc, n in ((current_path, acc_current, n_current), (remainder_path, acc_remainder, n_remainder)):
+    out = {}
+    for name, path in paths.items():
         if path.is_file():
-            out.append(bl.FluxBasis.load(path))
+            out[name] = loaders[name](path)
             continue
-        basis = acc.finish(n)
+        if acc[name] is None:
+            raise ValueError(f"no training frame for the {name} basis")
+        basis = acc[name].finish(sizes[name])
         path.parent.mkdir(parents=True, exist_ok=True)
         basis.save(path)
-        out.append(basis)
-    return out[0], out[1], {"from_cache": False, "n_frames": n_frames, "boundary_failures": failures}
+        out[name] = basis
+    return out, {"from_cache": False, "n_frames": n_frames, "boundary_failures": failures, "n_symmetric_frames": n_symmetric}
 
 
 def fit_remainder_ridge(train_rows: dict[str, pd.DataFrame], args, remainder: bl.FluxBasis, k: int, alpha: float,
-                        workers: int) -> tuple[dict, dict]:
-    """Ridge from the Ip-signed currents and rates to the first ``k`` remainder coefficients,
-    on the training frames. Returns the model (``k``, ``scaler``, ``weights``, ``intercept``)
-    and a summary (frames used, columns, training R2 of the coefficients)."""
+                        workers: int, windows: dict[str, list[str]]) -> tuple[dict, dict]:
+    """Ridges from the Ip-signed currents and rates to the first ``k`` remainder coefficients,
+    on the training frames, one per rate window (``windows``: window to input columns); the
+    coefficients are computed once. Returns per window the model (``k``, ``scaler``,
+    ``weights``, ``intercept``) and a summary (frames used, columns, training R2)."""
     items = _train_items(train_rows, args, remainder.mean, remainder.components[:k])
     coefficients = np.concatenate([r["coefficients"] for r in bl._map_ordered(_train_remainder_coefficients, items, workers)])
     frames = ridge_frames(pd.concat(list(train_rows.values()), ignore_index=True))
-    columns = ridge_columns()
-    scaler = bl.InputScaler.fit(frames, columns)
-    x, complete = scaler.transform(frames)
-    weights, intercept = bl.ridge_fit(x[complete], coefficients[complete], alpha)
-    model = {"k": k, "scaler": scaler, "weights": weights, "intercept": intercept}
-    summary = {"k": k, "alpha": alpha, "columns": columns, "n_frames": int(len(frames)), "n_complete": int(complete.sum()),
-               "train_coefficient_r2": pooled_r2(coefficients[complete], x[complete] @ weights + intercept)}
-    return model, summary
+    fitted, summaries = {}, {}
+    for window, columns in windows.items():
+        scaler = bl.InputScaler.fit(frames, columns)
+        x, complete = scaler.transform(frames)
+        weights, intercept = bl.ridge_fit(x[complete], coefficients[complete], alpha)
+        fitted[window] = {"k": k, "scaler": scaler, "weights": weights, "intercept": intercept}
+        summaries[window] = {"k": k, "alpha": alpha, "window": window, "columns": columns, "n_frames": int(len(frames)),
+                             "n_complete": int(complete.sum()),
+                             "train_coefficient_r2": pooled_r2(coefficients[complete], x[complete] @ weights + intercept)}
+    return fitted, summaries
 
 
 def pooled_r2(true: np.ndarray, pred: np.ndarray) -> float:
@@ -314,8 +376,59 @@ def render(table: pd.DataFrame, info: dict) -> str:
               f"Ridge (variant g): {ridge['k']} coefficients from {len(ridge['columns'])} inputs (currents and rates, Ip-signed), "
               f"alpha {ridge['alpha']}, {ridge['n_complete']} of {ridge['n_frames']} training frames complete; pooled coefficient R2 "
               f"training {ridge['train_coefficient_r2']:.4f}, validation {ridge['val_coefficient_r2']:.4f}."]
+    t = info.get("target_phase")
+    if t:
+        sym = t["symmetric_basis"]
+        lines += ["", "## Target-phase variants h to k (`docs/TARGET.md`, Part 5)", "",
+                  f"Symmetric basis of the share: {sym['n_components']} components over {sym['n_frames']} training frames "
+                  f"(passing the lighter label filter, with a boundary) and their mirrors; even and odd components among "
+                  + ", ".join(f"the first {k}: {v['even']} and {v['odd']}" for k, v in sym["parity_counts"].items())
+                  + "; variance held " + ", ".join(f"{k}: {v:.6f}" for k, v in sym["explained_cumulative"].items()) + ".", "",
+                  f"Placement (variant i): MAST R0 {t['placement']['r0_m']} m, a0 {t['placement']['a0_m']} m; share of the "
+                  "reconstructed total kept through placement and back:"]
+        lines.append(_quantile_line("retained", t["placement"]["retained"]))
+        lines.append(_quantile_line("reconstructed share total (variant j rescales it to one)", t["share_total_reconstructed"]))
+        lines += ["", "Remainder ridges (variant k), pooled coefficient R2:", ""]
+        for window, r in t["ridges"].items():
+            lines.append(f"- {window}: training {r['train_coefficient_r2']:.4f}, validation {r['val_coefficient_r2']:.4f} "
+                         f"({len(r['columns'])} inputs, {r['n_complete']} of {r['n_frames']} training frames complete)")
+        lines += ["", "Against the references of the specification (S, consistency, volume):", "",
+                  "| Variant | Reference | S - reference | Consistency - reference | Volume - reference |", "| --- | --- | --- | --- | --- |"]
+        for r in t["comparisons"]:
+            lines.append(f"| {r['variant']} | {r['reference']} | {r['d_S']:+.4f} | {r['d_consistency']:+.4f} | {r['d_volume']:+.4f} |")
+        lines.append("")
+        lines.append("Reading rule for h: the base count is kept if S is within 0.0003 of f and consistency within 0.001.")
     lines += ["", f"Runtime: {info['runtime_s']:.0f} s (" + ", ".join(f"{k} {v:.0f}" for k, v in info["timing"].items()) + ")", ""]
     return "\n".join(lines)
+
+
+def target_phase_record(table: pd.DataFrame, symmetric: cb.CurrentBasis, place: lt.Placement, ridge_infos: dict,
+                        window_pred: dict, coef_true: np.ndarray, retained: np.ndarray, share_totals: np.ndarray, args) -> dict:
+    """What the report says about variants h to k: the symmetric basis, the placement, the
+    ridges per window with their validation R2, and each variant against its reference."""
+    cumulative = np.cumsum(symmetric.explained_ratio)
+    scores = table.set_index("variant")
+    f_name, g_name = f"f_remainder_pca_{args.h_remainder_components}", f"g_remainder_ridge_{args.ridge_components}"
+    base = args.symmetric_base
+    pairs = [(f"h_symmetric_{k}", f_name) for k in args.symmetric_components]
+    pairs += [(f"i_placed_mast_{base}", f"h_symmetric_{base}"), (f"j_rescaled_{base}", f"h_symmetric_{base}")]
+    pairs += [(f"k_ridge_{w}_{base}", g_name) for w in ridge_infos]
+    comparisons = []
+    for variant, reference in pairs:
+        if variant in scores.index and reference in scores.index:
+            a, b = scores.loc[variant], scores.loc[reference]
+            comparisons.append({"variant": variant, "reference": reference, "d_S": float(a["S"] - b["S"]),
+                                "d_consistency": float(a["consistency"] - b["consistency"]),
+                                "d_volume": float(a["r2_volume"] - b["r2_volume"])})
+    ridges = {}
+    for w, info in ridge_infos.items():
+        ridges[w] = {**info, "val_coefficient_r2": pooled_r2(coef_true, np.concatenate(window_pred[w]))}
+    return {"symmetric_basis": {"n_components": symmetric.n_components, "n_frames": symmetric.n_frames,
+                                "parity_counts": {k: {"even": int((symmetric.parity[:k] > 0).sum()), "odd": int((symmetric.parity[:k] < 0).sum())}
+                                                  for k in args.symmetric_components},
+                                "explained_cumulative": {k: float(cumulative[k - 1]) for k in args.symmetric_components}},
+            "placement": {"r0_m": place.r0_m, "a0_m": place.a0_m, "retained": quantiles(retained)},
+            "share_total_reconstructed": quantiles(share_totals), "ridges": ridges, "comparisons": comparisons}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -326,7 +439,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--components", type=int, nargs="+", default=[20, 50, 100])
     parser.add_argument("--f-current-components", type=int, default=50, help="current components under variants f and g")
     parser.add_argument("--remainder-components", type=int, nargs="+", default=[5, 10, 20])
-    parser.add_argument("--ridge-components", type=int, default=10, help="remainder coefficients predicted in variant g")
+    parser.add_argument("--ridge-components", type=int, default=10, help="remainder coefficients predicted in variants g and k")
+    parser.add_argument("--symmetric-components", type=int, nargs="+", default=[50, 60, 80],
+                        help="components of the symmetric share basis under variant h")
+    parser.add_argument("--symmetric-base", type=int, default=50, help="component count of variants i, j and k")
+    parser.add_argument("--h-remainder-components", type=int, default=10, help="remainder components under variants h, i and j")
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--data-root", type=Path, default=default_data_root())
     parser.add_argument("--table-dir", type=Path, default=ft.DEFAULT_TABLE_ROOT)
@@ -352,24 +469,39 @@ def main(argv: list[str] | None = None) -> int:
         f"response on grid {response.grid_hash[:12]}")
 
     t0 = time.time()
-    train_rows = strided_rows(train_ids, args.table_dir, args.frame_stride)
-    val_rows = strided_rows(val_ids, args.table_dir, args.frame_stride)
+    if args.symmetric_base not in args.symmetric_components:
+        raise SystemExit("--symmetric-base must be one of --symmetric-components")
+    windows = rate_windows(args.table_dir)
+    extra_columns = sorted({c for columns in windows.values() for c in columns})
+    train_rows = strided_rows(train_ids, args.table_dir, args.frame_stride, extra_columns)
+    val_rows = strided_rows(val_ids, args.table_dir, args.frame_stride, extra_columns)
+    keep = {s: lf.lighter_label_filter(g) for s, g in train_rows.items()}
     timing["frames_s"] = time.time() - t0
+    log(f"rate windows: {', '.join(windows)}; training frames passing the lighter label filter: "
+        f"{sum(int(k.sum()) for k in keep.values())} of {sum(len(k) for k in keep.values())}")
 
     # The current and remainder bases on the training frames, and the plasma-flux basis of the present target.
     t0 = time.time()
     n_current = max([*args.components, args.f_current_components])
-    n_remainder = max([*args.remainder_components, args.ridge_components, *REPORTED_REMAINDER_COMPONENTS])
+    n_remainder = max([*args.remainder_components, args.ridge_components, args.h_remainder_components,
+                       *REPORTED_REMAINDER_COMPONENTS])
+    n_symmetric = max(args.symmetric_components)
     ids_hash = bl.hash_of_ids(train_ids)
     basis_path = args.response_cache / f"current_basis_{ids_hash}_k{n_current}_s{args.frame_stride}.npz"
     remainder_path = args.response_cache / f"remainder_basis_{ids_hash}_k{n_remainder}_s{args.frame_stride}.npz"
-    basis, remainder_basis, basis_info = fit_bases(train_rows, args, basis_path, n_current, remainder_path, n_remainder, workers)
+    symmetric_path = args.response_cache / f"symmetric_share_basis_{ids_hash}_k{n_symmetric}_s{args.frame_stride}.npz"
+    cell_area = float(np.prod(gs.grid_steps(table.grid_r, table.grid_z)))
+    bases, basis_info = fit_bases(train_rows, args, {"current": basis_path, "remainder": remainder_path, "symmetric": symmetric_path},
+                                  {"current": n_current, "remainder": n_remainder, "symmetric": n_symmetric}, keep, cell_area, workers)
+    basis, remainder_basis, symmetric = bases["current"], bases["remainder"], bases["symmetric"]
     timing["bases_s"] = time.time() - t0
     log(f"current basis: {basis.n_components} components, remainder basis: {remainder_basis.n_components} components, over "
         f"{basis.n_frames} frames ({'from the cache' if basis_info['from_cache'] else f'{timing['bases_s']:.0f} s'})")
     t0 = time.time()
     params = bl.BaselineParams()
-    ridge, ridge_info = fit_remainder_ridge(train_rows, args, remainder_basis, args.ridge_components, params.alpha, workers)
+    ridges, ridge_infos = fit_remainder_ridge(train_rows, args, remainder_basis, args.ridge_components, params.alpha, workers,
+                                              windows)
+    ridge, ridge_info = ridges["10ms"], ridge_infos["10ms"]
     timing["remainder_ridge_s"] = time.time() - t0
     log(f"remainder ridge: {ridge_info['k']} coefficients, {ridge_info['n_complete']} training frames, "
         f"training R2 {ridge_info['train_coefficient_r2']:.4f} ({timing['remainder_ridge_s']:.0f} s)")
@@ -385,15 +517,31 @@ def main(argv: list[str] | None = None) -> int:
     timing["plasma_basis_s"] = time.time() - t0
     log(f"plasma-flux basis: {plasma_basis.n_components} components over {plasma_basis.n_frames} frames ({seconds:.0f} s fitting)")
 
+    # Target-phase objects: the DIII-D flux basis of the symmetric share, and the MAST placement.
+    t0 = time.time()
+    reference = lt.reference_lattice(table.grid_r, table.grid_z)
+    d3d_flux = cb.flux_basis(MACHINE, symmetric, response, lt.placement(MACHINE, reference, reference))
+    mast_table = GreenTable.load(args.green_dir / "green_mast.npz")
+    mast_native = lt.native_lattice("MAST", mast_table.grid_r, mast_table.grid_z)
+    mast_place = lt.placement("MAST", reference, mast_native)
+    target = {"mean": symmetric.mean, "components": symmetric.components, "phi_mean": d3d_flux.phi_mean, "phi": d3d_flux.phi,
+              "ks": tuple(args.symmetric_components), "base_k": args.symmetric_base,
+              "h_remainder_k": args.h_remainder_components, "place": mast_place,
+              "back": lt.back_placement(mast_place, reference, mast_native), "ridges": ridges}
+    timing["target_objects_s"] = time.time() - t0
+
     # Validation pass: every variant's maps per shot.
     t0 = time.time()
     items = ((s, g, str(args.data_root), args.frame_stride, str(args.green_dir / "green_d3d.npz"), str(args.response_cache),
               basis.mean, basis.components, tuple(args.components), str(plasma_basis_path),
-              remainder_basis.mean, remainder_basis.components, tuple(args.remainder_components), args.f_current_components, ridge)
+              remainder_basis.mean, remainder_basis.components, tuple(args.remainder_components), args.f_current_components, ridge,
+              target)
              for s, g in val_rows.items())
     maps: dict[str, dict] = {}
     stats_rows = []
     coef_true, coef_pred, e_errors = [], [], []
+    window_pred: dict[str, list] = {w: [] for w in ridges}
+    retained, share_totals = [], []
     n_val_frames = 0
     for k, result in enumerate(bl._map_ordered(_val_shot, items, workers)):
         for variant, m in result["maps"].items():
@@ -401,6 +549,10 @@ def main(argv: list[str] | None = None) -> int:
         stats_rows += [{"shot": result["shot"], "frame": i, **s} for i, s in enumerate(result["stats"])]
         coef_true.append(result["coefficients_true"])
         coef_pred.append(result["coefficients_pred"])
+        for w, pred in result["ridge_pred"].items():
+            window_pred[w].append(pred)
+        retained.append(result["placement_retained"])
+        share_totals.append(result["share_total_reconstructed"])
         e_errors.append(result["e_max_error_over_range"])
         n_val_frames += result["n_frames"]
         if (k + 1) % 25 == 0:
@@ -442,12 +594,15 @@ def main(argv: list[str] | None = None) -> int:
             f"consistency {terms['consistency']:.4f} ({timing[f'score_{variant}_s']:.0f} s)")
     table_out = pd.DataFrame(rows)
     table_out.to_parquet(args.out / "ceiling.parquet", index=False)
+    target_info = target_phase_record(table_out, symmetric, mast_place, ridge_infos, window_pred, np.concatenate(coef_true),
+                                      np.concatenate(retained), np.concatenate(share_totals), args)
     stats.to_parquet(args.out / "mask_statistics.parquet", index=False)
     info = run_info(argv, vars(args), timestamp, time.time() - started, workers=workers, n_train_shots=len(train_ids),
                     n_val_shots=len(val_ids), n_val_frames=n_val_frames, coil_model=scales.source, basis=basis_info,
                     current_basis_file=str(basis_path), remainder_basis_file=str(remainder_path),
                     plasma_basis_file=str(plasma_basis_path), response_grid_hash=response.grid_hash,
                     references_from_cache=references.from_cache, mask_statistics=mask_info, remainder=remainder_info,
+                    symmetric_basis_file=str(symmetric_path), target_phase=target_info,
                     timing=timing, scores={r["variant"]: {k: v for k, v in r.items() if k != "variant"} for r in rows})
     (args.out / "ceiling.json").write_text(json.dumps(info, indent=2, default=float) + "\n")
     report = render(table_out, info)

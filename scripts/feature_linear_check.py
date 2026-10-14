@@ -22,10 +22,15 @@ ridge on the raw inputs of ``hybrid_ridge`` (Ip-signed currents and the Thomson
 summaries) predicting the same coefficients. No scoring is run for those.
 
 Writes ``linear_check.md``, ``linear_check.json`` and ``linear_check.parquet`` to
-``<report-root>/v<version>/``.
+``<report-root>/v<version>/``. For a version after the first, the report also shows the
+reference version's numbers (``--reference-version``, 1) from its ``linear_check.json``
+beside each arm and coefficient row of the same name, when that run used the same split
+file, lists, stride, components, ridge alpha, basis frames and seed; otherwise it names
+the arguments that differ. ``hybrid_ridge`` reads no feature, so its two scores agree.
 
 Follow-up options (diagnostic). Each adds a variant computed in the same run on the same
-frames and reported beside version 1; with any of them the run writes
+frames and reported beside the configuration's own version (``version <n>``); with any of
+them the run writes
 ``linear_check_followup.{md,json,parquet}`` only and leaves ``linear_check.*`` unchanged:
 
 - ``--by-phase``: every arm's scores and every coefficient R2 also by phase (rising,
@@ -41,7 +46,9 @@ frames and reported beside version 1; with any of them the run writes
   Scoring adds the true remainder back, so the arms differ only in the predicted
   masked-current flux.
 - ``--ip-frac-unscaled``: ``ip_frac`` enters with identity scaling, every other statistic
-  unchanged. ``hybrid_ridge`` does not read it; its version-1 score is the reference.
+  unchanged. ``hybrid_ridge`` does not read it; its score in the configuration's own
+  version is the reference. From version 2 on, ``ip_frac`` is already unscaled and the
+  variant equals that version.
 
 Each variant reports the coefficient R2 with each feature group left out. A follow-up run
 only reads the caches of the default run and writes nothing outside the report folder; it
@@ -51,12 +58,14 @@ parameters comes first. Usage::
     python scripts/feature_linear_check.py              # working lists of splits/split_v1.json
     python scripts/feature_linear_check.py --full       # the full training and validation lists
     python scripts/feature_linear_check.py --by-phase --target masked_current_flux --ip-frac-unscaled
+    python scripts/feature_linear_check.py --config configs/features_v2.yaml
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -83,6 +92,8 @@ TERMS = ("S", "r2_psi", "r2_qb", "one_minus_dlcfs", "consistency")
 SHAPE_TERMS = ("r2_R_axis", "r2_Z_axis", "r2_kappa", "r2_tri_top", "r2_tri_bot", "r2_volume", "r2_li")
 FOLLOWUP_STEM = "linear_check_followup"
 VERSION_1 = "version 1"
+# Arguments that must agree for the reference version's numbers to be shown.
+REFERENCE_KEYS = ("split", "full", "frame_stride", "n_components", "alpha", "pca_frames", "seed")
 MASKED = "masked_current_flux"
 IP_FRAC_UNSCALED = "ip_frac_unscaled"
 TARGET_CHOICES = ("plasma", MASKED)
@@ -311,22 +322,56 @@ def render(table: pd.DataFrame, info: dict) -> str:
              f"Ridge alpha {info['arguments']['alpha']}, {info['n_components']} components of the plasma target over "
              f"mu0 R0 abs(Ip) (R0 {info['r0_m']} m; frames below {info['min_abs_ip_ka']:g} kA left out of the fit). Every arm "
              f"takes q95 and betaN from the scalar ridge of `ridge_signed`. Reference: `hybrid_ridge`, scored in this run "
-             f"(F61: {F61_REFERENCE_S} on the working lists).", "",
-             "| Status | Arm | Inputs | S - hybrid_ridge |", "| --- | --- | --- | --- |"]
-    for arm, s in info["status"].items():
-        lines.append(f"| {s['status']} | {arm} | {s['n_inputs']} | {s['delta_s']:+.4f} |")
+             f"(F61: {F61_REFERENCE_S} on the working lists).", ""]
+    ref = info.get("reference")
+    shown = ref is not None and ref["comparable"]
+    if ref is not None:
+        lines += [reference_note(ref), ""]
+    if not shown:
+        lines += ["| Status | Arm | Inputs | S - hybrid_ridge |", "| --- | --- | --- | --- |"]
+        for arm, s in info["status"].items():
+            lines.append(f"| {s['status']} | {arm} | {s['n_inputs']} | {s['delta_s']:+.4f} |")
+    else:
+        v = ref["version"]
+        lines += [f"| Status | Arm | Inputs | S - hybrid_ridge | v{v} inputs | v{v} S - hybrid_ridge | S - v{v} S |",
+                  "| --- " * 7 + "|"]
+        ref_status = ref["status"]
+        ref_s = {(r["model"], r["subset"]): r["S"] for r in ref["scores"]}
+        own_s = table.set_index(["model", "subset"])["S"]
+        for arm, s in info["status"].items():
+            q = ref_status.get(arm)
+            delta = own_s[(arm, "all")] - ref_s[(arm, "all")] if (arm, "all") in ref_s else np.nan
+            lines.append(f"| {s['status']} | {arm} | {s['n_inputs']} | {s['delta_s']:+.4f} | "
+                         f"{q['n_inputs'] if q else '-'} | {_f(q['delta_s'], signed=True) if q else '-'} | {_f(delta, signed=True)} |")
+    ref_rows = {(r["model"], r["subset"]): r for r in ref["scores"]} if shown else {}
     for subset, g in table.groupby("subset", sort=False):
         lines += ["", f"## {subset} ({int(g['n_shots'].iloc[0])} shots)", "",
                   "| Arm | S | R2 psi | R2 q95,betaN | 1 - D_LCFS | Consistency | " + " | ".join(t[3:] for t in SHAPE_TERMS) + " |",
                   "| --- " * (6 + len(SHAPE_TERMS)) + "|"]
         for r in g.itertuples(index=False):
             lines.append(f"| {r.model} | " + " | ".join(f"{getattr(r, t):.4f}" for t in (*TERMS, *SHAPE_TERMS)) + " |")
+        for r in g.itertuples(index=False):
+            q = ref_rows.get((r.model, subset))
+            if q is not None:
+                lines.append(f"| {r.model} (v{ref['version']}) | " + " | ".join(_f(q.get(t)) for t in (*TERMS, *SHAPE_TERMS)) + " |")
     coef = info["coefficient_r2"]
     lines += ["", "## Coefficient R2 (validation frames, no scoring)", "",
-              "Pooled R2 of the predicted coefficients of the per-Ip plasma target, frames above the Ip threshold.", "",
-              "| Inputs | Inputs count | Training | Validation |", "| --- | --- | --- | --- |"]
-    for name, r in coef.items():
-        lines.append(f"| {name} | {r['n_inputs']} | {r['train']:.4f} | {r['validation']:.4f} |")
+              "Pooled R2 of the predicted coefficients of the per-Ip plasma target, frames above the Ip threshold.", ""]
+    if not shown:
+        lines += ["| Inputs | Inputs count | Training | Validation |", "| --- | --- | --- | --- |"]
+        for name, r in coef.items():
+            lines.append(f"| {name} | {r['n_inputs']} | {r['train']:.4f} | {r['validation']:.4f} |")
+    else:
+        v = ref["version"]
+        ref_coef = ref["coefficient_r2"]
+        lines += [f"Rows of the same name in version {v} beside; a dash where version {v} has no such row.", "",
+                  f"| Inputs | Inputs count | Training | Validation | v{v} count | v{v} training | v{v} validation |",
+                  "| --- " * 7 + "|"]
+        for name in dict.fromkeys([*coef, *ref_coef]):
+            r, q = coef.get(name), ref_coef.get(name)
+            own = f"{r['n_inputs']} | {r['train']:.4f} | {r['validation']:.4f}" if r else "- | - | -"
+            old = f"{q['n_inputs']} | {_f(q['train'])} | {_f(q['validation'])}" if q else "- | - | -"
+            lines.append(f"| {name} | {own} | {old} |")
     lines += ["", f"Runtime: {info['runtime_s']:.0f} s (" + ", ".join(f"{k} {v:.0f}" for k, v in info["timing"].items()) + ")", ""]
     return "\n".join(lines)
 
@@ -337,22 +382,69 @@ def _f(v, digits: int = 4, signed: bool = False) -> str:
     return f"{v:+.{digits}f}" if signed else f"{v:.{digits}f}"
 
 
+def display_path(path: Path | str) -> str:
+    """A path relative to the repository when possible, so that committed reports carry no
+    absolute home path."""
+    return os.path.relpath(Path(path).resolve(), dataset.REPO_ROOT)
+
+
+def reference_note(ref: dict) -> str:
+    """One line on the reference version's numbers: shown, or why not."""
+    if ref["comparable"]:
+        return (f"Version {ref['version']} beside this version: `{ref['path']}`, same lists, frames, basis and ridge; "
+                f"only the feature sets and their scaling differ.")
+    def shown_value(key: str, value):
+        return display_path(value) if key == "split" and value not in (None, "missing") else value
+    return (f"Version {ref['version']} not shown: its run differs in "
+            + ", ".join(f"{k} ({shown_value(k, a)} against {shown_value(k, b)})" for k, (a, b) in ref["differences"].items())
+            + ".")
+
+
+def load_reference(version: int, args, n_train_frames: int, n_val_frames: int) -> dict | None:
+    """The reference version's default-run record, or None for the reference version itself.
+
+    Returns:
+        ``{"version", "path", "differences", "comparable"}``, plus ``status``, ``scores``
+        and ``coefficient_r2`` of that run when comparable (no argument and no frame count
+        differs).
+    """
+    if version == args.reference_version:
+        return None
+    path = Path(args.report_root) / f"v{args.reference_version}" / "linear_check.json"
+    out = {"version": args.reference_version, "path": display_path(path)}
+    if not path.is_file():
+        return {**out, "differences": {"linear_check.json": ["missing", "present"]}, "comparable": False}
+    record = json.loads(path.read_text())
+    differences = fc.reference_differences(record.get("arguments", {}), vars(args), REFERENCE_KEYS, path_keys=("split",))
+    for key, count in (("n_train_frames", n_train_frames), ("n_val_frames", n_val_frames)):
+        if record.get(key) != count:
+            differences[key] = [record.get(key), count]
+    out.update(differences=differences, comparable=not differences)
+    if out["comparable"]:
+        out.update(status=record["status"], scores=record["scores"], coefficient_r2=record["coefficient_r2"])
+    return out
+
+
 def render_followup(scores: pd.DataFrame, info: dict) -> str:
     a = info["arguments"]
+    base = info.get("base_variant", VERSION_1)
+    short = "v" + base.removeprefix("version ")
     lines = [f"# Linear check follow-up (X16), version {info['version']}", "",
              f"{info['n_train_shots']} training shots ({info['n_train_frames']} frames), {info['n_val_shots']} validation shots "
              f"scored at frame stride {a['frame_stride']} ({'full lists' if a['full'] else 'working lists'}); ridge alpha "
              f"{a['alpha']}, {info['n_components']} components; frames below {info['min_abs_ip_ka']:g} kA left out of every "
-             f"ridge fit. Every arm takes q95 and betaN from the scalar ridge of `ridge_signed`. Variants beside version 1: "
-             + (", ".join(f"`{v}`" for v in info["variants"] if v != VERSION_1) or "none") + "; by phase: "
-             + ("yes" if a["by_phase"] else "no") + ". Diagnostic only: version 1 and its outputs are unchanged.", ""]
-    notes = {VERSION_1: "the plasma target over mu0 R0 abs(Ip), as in `linear_check.md`; `hybrid_ridge` predicts the plasma "
-                        "target itself from its 25 inputs.",
+             f"ridge fit. Every arm takes q95 and betaN from the scalar ridge of `ridge_signed`. Variants beside {base}: "
+             + (", ".join(f"`{v}`" for v in info["variants"] if v != base) or "none") + "; by phase: "
+             + ("yes" if a["by_phase"] else "no") + f". Diagnostic only: {base} and its outputs are unchanged.", ""]
+    notes = {base: "the plasma target over mu0 R0 abs(Ip), as in `linear_check.md`; `hybrid_ridge` predicts the plasma "
+                   "target itself from its 25 inputs.",
              MASKED: "the flux of the current inside the scorer's boundary (plasma target minus the vacuum remainder, variant "
                      "e of F79) over mu0 R0 abs(Ip), its own basis; `hybrid_ridge` refitted on this target, basis and frames "
                      "from its own inputs; the true remainder added back before scoring.",
-             IP_FRAC_UNSCALED: "the version-1 target; `ip_frac` with identity scaling. `hybrid_ridge` does not read `ip_frac`; "
-                               "its version-1 score is the reference."}
+             IP_FRAC_UNSCALED: ("the version-1 target; `ip_frac` with identity scaling. `hybrid_ridge` does not read `ip_frac`; "
+                                "its version-1 score is the reference.") if base == VERSION_1 else
+                               (f"the {short} target; `ip_frac` with identity scaling, as already in {base}, so the variant "
+                                f"equals {base}. `hybrid_ridge` does not read `ip_frac`; its {short} score is the reference.")}
     for v in info["variants"]:
         lines.append(f"- `{v}`: {notes[v]}")
     if MASKED in info.get("spaces", {}):
@@ -360,13 +452,13 @@ def render_followup(scores: pd.DataFrame, info: dict) -> str:
         lines.append(f"- Masked-current basis: {m['n_components']} components, {_f(m['explained'])} of the variance over "
                      f"{m['basis_frames']} frames; frames without a boundary (target zero): training "
                      f"{_f(m['share_without_boundary']['train'])}, validation {_f(m['share_without_boundary']['validation'])}.")
-    header = ("| Variant | Arm | S | S - v1 same arm | S - reference | R2 psi | R2 q95,betaN | 1 - D_LCFS | Consistency | "
+    header = (f"| Variant | Arm | S | S - {short} same arm | S - reference | R2 psi | R2 q95,betaN | 1 - D_LCFS | Consistency | "
               + " | ".join(t[3:] for t in SHAPE_TERMS) + " |")
     rule = "| --- " * (9 + len(SHAPE_TERMS)) + "|"
 
     def table_rows(g: pd.DataFrame) -> list[str]:
         out = []
-        v1 = g[g["variant"] == VERSION_1].set_index("model")["S"]
+        v1 = g[g["variant"] == base].set_index("model")["S"]
         for r in g.itertuples(index=False):
             ref = g[(g["variant"] == r.variant) & (g["model"] == "hybrid_ridge")]
             ref_s = ref["S"].iloc[0] if len(ref) else v1.get("hybrid_ridge", np.nan)
@@ -374,7 +466,7 @@ def render_followup(scores: pd.DataFrame, info: dict) -> str:
                        f"{_f(r.S - ref_s, signed=True)} | " + " | ".join(_f(getattr(r, t)) for t in (*TERMS[1:], *SHAPE_TERMS)) + " |")
         return out
 
-    lines += ["", "S - reference: against `hybrid_ridge` of the same variant (of version 1 for `ip_frac_unscaled`)."]
+    lines += ["", f"S - reference: against `hybrid_ridge` of the same variant (of {base} for `ip_frac_unscaled`)."]
     for subset, g in scores[scores["phase"] == "all"].groupby("subset", sort=False):
         lines += ["", f"## Scores, {subset} ({int(g['n_shots'].iloc[0])} shots)", "", header, rule, *table_rows(g)]
     if a["by_phase"]:
@@ -430,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ip-frac-unscaled", action="store_true", help="follow-up: add the variant with ip_frac unscaled")
     parser.add_argument("--response-cache", type=Path, default=ct.DEFAULT_CACHE_DIR,
                         help="plasma response of the grid (read; built in memory when absent)")
+    parser.add_argument("--reference-version", type=int, default=1,
+                        help="version whose default-run numbers are shown beside this version's (none for that version itself)")
     args = parser.parse_args(argv)
     followup = args.by_phase or args.target == MASKED or args.ip_frac_unscaled
     try:
@@ -452,6 +546,7 @@ def run(args, argv, followup: bool) -> int:
     cfg = machine_config(MACHINE)
     r0_m = cfg.major_radius.value
     read_only = followup
+    base = f"version {config.version}"
 
     split = sp.read_split(args.split)
     train_ids = sorted(split["train" if args.full else "working_train"])
@@ -506,9 +601,11 @@ def run(args, argv, followup: bool) -> int:
         timing["masked_target_s"] = time.time() - t0
 
     # Scaled inputs: the features under each scaler, and the raw inputs of hybrid_ridge.
-    scalers = {VERSION_1: scaler}
+    scalers = {base: scaler}
     if args.ip_frac_unscaled:
         scalers[IP_FRAC_UNSCALED] = scaler.with_identity(["ip_frac"])
+        if scaler.rules["ip_frac"]["scale"] == "none":
+            log(f"ip_frac is already unscaled in {base}; the variant {IP_FRAC_UNSCALED} equals it")
     train_table = feature_table(train_ids, config, scaler.columns, args.feature_root)
     val_table = feature_table(val_ids, config, scaler.columns, args.feature_root)
     train_x, val_x, x_by_shot = {}, {}, {}
@@ -521,9 +618,9 @@ def run(args, argv, followup: bool) -> int:
     raw_val, _ = raw_scaler.transform(targets.signed_frames(val_frames, cfg))
 
     # Variants: (target space, scaler, whether hybrid_ridge is refitted on the target).
-    variants = {VERSION_1: ("plasma", VERSION_1)}
+    variants = {base: ("plasma", base)}
     if args.target == MASKED:
-        variants[MASKED] = (MASKED, VERSION_1)
+        variants[MASKED] = (MASKED, base)
     if args.ip_frac_unscaled:
         variants[IP_FRAC_UNSCALED] = ("plasma", IP_FRAC_UNSCALED)
 
@@ -557,7 +654,7 @@ def run(args, argv, followup: bool) -> int:
     for variant, (space_name, scaler_name) in variants.items():
         space = spaces[space_name]
         arms[variant], ridges[variant] = {}, {}
-        if variant == VERSION_1:
+        if variant == base:
             arms[variant]["hybrid_ridge"] = baselines["hybrid_ridge"]
         elif space_name == MASKED:
             hybrid = fit_feature_ridge("hybrid_ridge", raw_train, [], space.train, keep, args.alpha)
@@ -609,7 +706,7 @@ def run(args, argv, followup: bool) -> int:
                 part = bl.score_local(predict, ref.shot_ids, args.data_root, SPLIT_NAME, args.frame_stride, ref, workers,
                                       psi_sign=result.psi_sign)
                 rows.append({"variant": variant, "phase": phase, "model": name, "subset": "all", **bl.score_terms(part.finalize())})
-            key = name if variant == VERSION_1 else f"{variant}: {name}"
+            key = name if variant == base else f"{variant}: {name}"
             timing[f"score_{key}_s"] = time.time() - t0
             log(f"{key}: S {overall:.4f} ({timing[f'score_{key}_s']:.0f} s)")
     scores = pd.DataFrame(rows)
@@ -620,23 +717,26 @@ def run(args, argv, followup: bool) -> int:
                   per_ip_basis_explained=float(basis.explained_ratio.sum()), r0_m=r0_m, min_abs_ip_ka=config.min_abs_ip_ka,
                   coil_model=scales.source, references_from_cache=references.from_cache, f61_reference_s=F61_REFERENCE_S)
     if not followup:
-        v1 = scores[scores["variant"] == VERSION_1].drop(columns=["variant", "phase"]).reset_index(drop=True)
+        v1 = scores[scores["variant"] == base].drop(columns=["variant", "phase"]).reset_index(drop=True)
         v1.to_parquet(out_dir / "linear_check.parquet", index=False)
         overall = v1.loc[v1["subset"] == "all"].set_index("model")["S"]
         status = {name: {"status": "pass" if overall[name] >= overall["hybrid_ridge"] else "review",
                          "delta_s": float(overall[name] - overall["hybrid_ridge"]), "n_inputs": len(r.columns)}
-                  for name, r in ridges[VERSION_1].items()}
+                  for name, r in ridges[base].items()}
         status["hybrid_ridge"] = {"status": "reference", "delta_s": 0.0, "n_inputs": len(columns)}
+        reference = load_reference(config.version, args, common["n_train_frames"], common["n_val_frames"])
+        extra = {} if reference is None else {"reference": {k: v for k, v in reference.items()
+                                                            if k not in ("status", "scores", "coefficient_r2")}}
         info = run_info(argv, vars(args), timestamp, time.time() - started, **common, status=status,
-                        coefficient_r2=coefficient_r2_all[VERSION_1], timing=timing, scores=v1.to_dict(orient="records"))
+                        coefficient_r2=coefficient_r2_all[base], timing=timing, scores=v1.to_dict(orient="records"), **extra)
         (out_dir / "linear_check.json").write_text(json.dumps(info, indent=2, default=fc.json_default) + "\n")
-        report = render(v1, info)
+        report = render(v1, {**info, "reference": reference})
         (out_dir / "linear_check.md").write_text(report)
         print(report)
         return 0
 
     scores.to_parquet(out_dir / f"{FOLLOWUP_STEM}.parquet", index=False)
-    info = run_info(argv, vars(args), timestamp, time.time() - started, **common, variants=list(variants),
+    info = run_info(argv, vars(args), timestamp, time.time() - started, **common, base_variant=base, variants=list(variants),
                     spaces={k: v.info for k, v in spaces.items() if v.info}, phase_frames=phase_frames,
                     coefficient_r2=coefficient_r2_all, variance_shares=variance_shares, timing=timing,
                     scores=scores.to_dict(orient="records"))

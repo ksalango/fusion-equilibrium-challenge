@@ -1,0 +1,108 @@
+# Feature configuration, version 2 (docs/FEATURES.md). Machine-independent choices only:
+# the sample-point layout, the features and the sets. Machine constants (R0, a0, the
+# toroidal-field turns) live in src/fusion_eq/machines.py.
+#
+# Changes from version 1 (decisions of 13 October, findings F82 and F83): the feature
+# shaping = (coil_c02 - coil_c20) / 2 is added; ip_frac is not scaled; set_b takes shaping
+# in place of coil_c20 and coil_c02 and shafranov_lambda in place of coil_c10, and
+# shafranov_lambda moves to the group coil_terms, so that set_b without coil_terms leaves out
+# the whole coil description (it stays in the candidates' place in column order). set_a, the
+# layout and every other entry are unchanged, and every version-1 feature is still built.
+# The vacuum residual is not a feature. ts_te_peaking is not added: the frame table holds
+# no core mean Te (the core summaries are te_peak, ne_peak, pe_peak and pe_mean).
+#
+# Fields of a feature entry:
+#   function     registered function (fusion_eq.features.REGISTRY); params are its arguments
+#   group        coil_pattern, coil_terms, plasma_content, field_current, shot_position, candidate
+#   mirror       even (unchanged), odd (sign changes), permute (points exchanged with partners)
+#   scale        robust (median and interquartile range of DIII-D training, originals and
+#                mirrors together) or none
+#   scale_group  features sharing one median and one interquartile range
+#   scale_with   source (DIII-D training statistics) or target (the machine's own inputs)
+#   transform    optional, applied before scaling (log1p)
+#   uses_future  true when the value uses samples later than the frame. Not counted: the
+#                frame table's centred 2 ms mean of the currents (1 ms ahead), the form in
+#                which every current enters. Counted: Thomson interpolation to the next
+#                slice, the centred 50 ms slope, and anything taken over the whole shot.
+#   note         free text
+
+version: 2
+
+# Frames with abs(Ip) below this give NaN in every feature divided by Ip (check X3).
+min_abs_ip_ka: 20.0
+
+layout:
+  min_clearance_m: 0.15
+  # 5 x 5 lattice x in {-0.75, -0.375, 0, 0.375, 0.75}, y in {-1.5, -0.75, 0, 0.75, 1.5},
+  # less the reference point (0, 0) and the pairs (0.375, +-1.5) and (0.75, +-1.5), which
+  # fail the clearance on MAST (P3, P6) and at (0.75, +-1.5) on DIII-D (F7A/B); plus
+  # (0.375, +-1.125), which clears both machines and samples the outboard upper and lower
+  # region. Layout review of 12 October 2026. Order gives the coil_pt_<i> columns.
+  points:
+    - [-0.75, -1.5]
+    - [-0.75, -0.75]
+    - [-0.75, 0.0]
+    - [-0.75, 0.75]
+    - [-0.75, 1.5]
+    - [-0.375, -1.5]
+    - [-0.375, -0.75]
+    - [-0.375, 0.0]
+    - [-0.375, 0.75]
+    - [-0.375, 1.5]
+    - [0.0, -1.5]
+    - [0.0, -0.75]
+    - [0.0, 0.75]
+    - [0.0, 1.5]
+    - [0.375, -1.125]
+    - [0.375, -0.75]
+    - [0.375, 0.0]
+    - [0.375, 0.75]
+    - [0.375, 1.125]
+    - [0.75, -0.75]
+    - [0.75, 0.0]
+    - [0.75, 0.75]
+
+features:
+  # Group 1: coil pattern.
+  - name: coil_pt
+    function: coil_points
+    group: coil_pattern
+    mirror: permute
+    scale: robust
+    scale_group: coil_pattern
+    uses_future: false
+    note: One column per layout point, coil_pt_00 to coil_pt_21.
+  - {name: coil_c10, function: coil_term, params: {term: c10}, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: Vertical field at the centre}
+  - {name: coil_c01, function: coil_term, params: {term: c01}, group: coil_terms, mirror: odd, scale: robust, uses_future: false, note: Radial field at the centre}
+  - {name: coil_c20, function: coil_term, params: {term: c20}, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: Field curvature in R}
+  - {name: coil_c11, function: coil_term, params: {term: c11}, group: coil_terms, mirror: odd, scale: robust, uses_future: false, note: Tilt}
+  - {name: coil_c02, function: coil_term, params: {term: c02}, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: Field curvature in Z}
+  - {name: coil_c30, function: coil_term, params: {term: c30}, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: Third order}
+  - {name: coil_c21, function: coil_term, params: {term: c21}, group: coil_terms, mirror: odd, scale: robust, uses_future: false, note: Third order}
+  - {name: coil_c12, function: coil_term, params: {term: c12}, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: Third order}
+  - {name: coil_c03, function: coil_term, params: {term: c03}, group: coil_terms, mirror: odd, scale: robust, uses_future: false, note: Third order}
+  - {name: shaping, function: shaping, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: "(coil_c02 - coil_c20) / 2; stretch left beside coil_c10 under the current-free relation (F82)"}
+
+  # Group 2: plasma content (Thomson core summaries, interpolated form).
+  - {name: ts_beta_p, function: ts_beta_p, group: plasma_content, mirror: even, scale: robust, uses_future: true, note: Thomson interpolation}
+  - {name: ts_pe_peaking, function: ts_pe_peaking, group: plasma_content, mirror: even, scale: robust, uses_future: true, note: Thomson interpolation}
+  - {name: ts_valid, function: ts_valid, group: plasma_content, mirror: even, scale: none, uses_future: true, note: Nearest valid slice within 20 ms may be later}
+
+  # Group 3: field against current.
+  - {name: q_cyl, function: q_cyl, group: field_current, mirror: even, scale: robust, uses_future: false}
+
+  # Group 4: position in the shot.
+  - {name: ip_frac, function: ip_frac, group: shot_position, mirror: even, scale: none, uses_future: true, note: "Peak of the whole shot; bounded in [0, 1], not scaled (F83)"}
+  - {name: ip_rate_rel, function: ip_rate_rel, group: shot_position, mirror: even, scale: robust, uses_future: true, note: Centred 50 ms slope; Thomson interpolation in tau_R}
+  - {name: resistive_age, function: resistive_age, group: shot_position, mirror: even, scale: robust, uses_future: true, note: ip_rise_ms uses the whole shot's Ip percentile; Thomson interpolation in tau_R}
+
+  # Candidates for ablation (outside the default sets).
+  - {name: shafranov_lambda, function: shafranov_lambda, group: coil_terms, mirror: even, scale: robust, uses_future: false, note: "Group coil_terms in version 2: it stands for coil_c10 in set_b"}
+  - {name: ohmic_flux_used, function: ohmic_flux_used, group: candidate, mirror: even, scale: robust, uses_future: true, note: sol_at_rise at ip_rise_ms}
+  - {name: greenwald_frac, function: greenwald_frac, group: candidate, mirror: even, scale: robust, uses_future: true, note: Thomson interpolation}
+
+sets:
+  set_a: [coil_pt, ts_beta_p, ts_pe_peaking, ts_valid, q_cyl, ip_frac, ip_rate_rel, resistive_age]
+  # set_b: shafranov_lambda in place of coil_c10, shaping in place of coil_c20 and coil_c02.
+  set_b: [shafranov_lambda, coil_c01, shaping, coil_c11, coil_c30, coil_c21, coil_c12, coil_c03,
+          ts_beta_p, ts_pe_peaking, ts_valid, q_cyl, ip_frac, ip_rate_rel, resistive_age]

@@ -61,12 +61,15 @@ and written to every build record.
 
 | Constant | DIII-D | MAST | Status |
 | --- | --- | --- | --- |
-| Reference major radius R0 (m) | 1.67 | 0.85 | To be confirmed from published specifications |
-| Reference minor radius a0 (m) | 0.67 | 0.65 | To be confirmed from published specifications |
-| Toroidal-field turns N_tf | 144 | 24 | DIII-D confirmed from the data (F74). MAST from recall, not verified |
+| Reference major radius R0 (m) | 1.67 | 0.85 | Verified. DIII-D: National Academies 2019, Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G. MAST: Sykes et al. 2001, Nucl. Fusion 41 1423, Table 1 |
+| Reference minor radius a0 (m) | 0.67 | 0.65 | Verified, same sources as R0 |
+| Toroidal-field turns N_tf | 144 | 24 | Verified. DIII-D from the data (F74). MAST: Morris 1998, Europhysics News 29(6) 233 (24 centre-column conductors), consistent with Sykes et al. 2001 (2.1 MA rod current) and Berkery et al. 2021 (-86 kA per conductor) |
 
 `q_cyl` on MAST is linear in N_tf, so an error in the MAST value shifts that input. The
-build record states which constants were unverified at build time.
+build record states the verified status of each constant at build time; every constant was
+verified on 13 October 2026, with the values unchanged. The alternative published MAST set,
+R0 0.70 m and a0 0.50 m (Morris 1998), is a sensitivity case
+(`reports/features/v1/backup_radii_check.md`, F88), not a constant.
 
 Normalized coordinates on each machine: x = (R - R0) / a0, y = Z / a0.
 

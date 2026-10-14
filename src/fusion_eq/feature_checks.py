@@ -14,6 +14,7 @@ training median and interquartile range.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 import numpy as np
@@ -654,6 +655,37 @@ def json_default(value):
     if isinstance(value, np.ndarray):
         return value.tolist()
     raise TypeError(f"not serializable: {type(value).__name__}")
+
+
+def reference_differences(reference: Mapping, current: Mapping, keys: Sequence[str],
+                          path_keys: Sequence[str] = ()) -> dict[str, list]:
+    """Arguments in which an earlier version's run differs from the current run.
+
+    A report shows an earlier version's numbers beside its own only when both runs used the
+    same frames and samples; this lists what stands in the way.
+
+    Args:
+        reference: ``arguments`` of the earlier run's record (``dataset.run_info``).
+        current: The current run's arguments (``vars(args)``).
+        keys: Arguments that must agree.
+        path_keys: Those of ``keys`` that are paths, compared after resolving.
+
+    Returns:
+        Key to ``[reference value, current value]`` for every key that differs or is
+        missing from the reference; empty when the runs are comparable.
+    """
+    def norm(key: str, value):
+        if value is None:
+            return None
+        return str(Path(value).resolve()) if key in path_keys else value
+
+    out = {}
+    for key in keys:
+        ref = norm(key, reference.get(key)) if key in reference else "missing"
+        cur = norm(key, current.get(key))
+        if ref != cur:
+            out[key] = [ref, cur]
+    return out
 
 
 def frames_equal(a: pd.DataFrame, b: pd.DataFrame, columns: Sequence[str]) -> bool:

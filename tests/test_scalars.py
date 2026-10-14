@@ -19,7 +19,7 @@ def test_toroidal_field_is_linear_in_current_and_ignores_its_sign():
     assert bt == pytest.approx(2e-7 * 144 * 117_000 / 1.67) and bt == pytest.approx(2.0176, abs=1e-3)
     assert sc.toroidal_field(-117.0, 1.67, 144) == bt and sc.toroidal_field(234.0, 1.67, 144) == pytest.approx(2 * bt)
     assert sc.toroidal_field(117.0, 3.34, 144) == pytest.approx(bt / 2)
-    assert sc.TF_TURNS["DIII-D"] == 144 and "MAST" not in sc.TF_TURNS
+    assert sc.TF_TURNS["DIII-D"] == 144 and sc.TF_TURNS["MAST"] == 24
     assert np.isnan(sc.toroidal_field(np.nan, 1.67, 144))
 
 

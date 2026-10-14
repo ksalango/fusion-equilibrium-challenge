@@ -1,0 +1,30 @@
+# Target configuration, version 1 (docs/TARGET.md, "Configuration"). Machine constants are
+# not in this file; they are read from src/fusion_eq/machines.py and written to the build
+# record with their verified status.
+
+version: 1
+
+current:
+  # Components of the share basis. 50 by default; ceiling variant h decides whether 60 or
+  # 80 are needed (a configuration change afterwards).
+  n_components: 50
+  # Fixed-seed sample of training frames that pass the lighter label filter and have a
+  # boundary; the basis is fitted on them and their mirrors.
+  fit_frames: 100000
+  seed: 0
+  # Exact up-down parity (even and odd components fitted separately); the only form built.
+  symmetric: true
+
+remainder:
+  n_components: 10
+  ridge_alpha: 1.0
+  # Ip, solenoid, toroidal field and the 18 F-coils: windowed mean and rate, Ip-signed
+  # (ceiling variant g). Each window the frame table carries is fitted and reported; the
+  # better one on validation is saved as the default. The toroidal field has no 50 ms rate
+  # and keeps its 10 ms rate in the 50 ms ridge.
+  inputs: currents_and_rates
+  rate_windows_ms: [10, 50]
+
+mask: scorer_boundary
+placement: conservative
+shape_numbers: true

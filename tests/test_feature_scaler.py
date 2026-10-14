@@ -11,7 +11,7 @@ import pytest
 
 from fusion_eq import feature_checks as fc, features as fe
 from fusion_eq.feature_scaler import RobustScaler
-from tests.test_features import CONFIG, make_frames, point_table, resources
+from tests.test_features import CONFIG, CONFIG_V2, make_frames, point_table, resources
 
 
 @pytest.fixture(scope="module")
@@ -166,3 +166,25 @@ def test_extended_appends_columns_with_their_own_statistics(built):
     assert np.array_equal(x[:, 0], scaler.transform(built, "DIII-D", ["q_cyl"])[:, 0])
     with pytest.raises(ValueError, match="both"):
         scaler.extended(scaler)
+
+
+def test_version_2_scaler_leaves_ip_frac_unscaled_and_scales_shaping_on_its_own():
+    built_v2 = fe.build_features(make_frames(n_shots=4, n_frames=10), "DIII-D", CONFIG_V2, resources(point_table()))
+    mirrored = fe.mirror_features(built_v2, CONFIG_V2)
+    v2 = RobustScaler.fit(built_v2, mirrored, CONFIG_V2)
+    v1 = RobustScaler.fit(built_v2[["shot", "frame", *CONFIG.all_columns()]], mirrored[["shot", "frame", *CONFIG.all_columns()]],
+                          CONFIG)
+    assert v2.columns == tuple(CONFIG_V2.all_columns())
+    assert v2.rules["ip_frac"]["scale"] == "none" and v2.source["ip_frac"] == [0.0, 1.0]
+    # Shaping is even, so originals and mirrors give the same values twice.
+    q25, q50, q75 = np.percentile(np.tile(built_v2["shaping"].to_numpy(), 2), [25, 50, 75])
+    assert v2.source["shaping"] == pytest.approx([q50, q75 - q25])
+    # Every other statistic is the version-1 one.
+    assert {c: v for c, v in v2.source.items() if c not in ("ip_frac", "shaping")} == \
+        {c: v for c, v in v1.source.items() if c != "ip_frac"}
+    x = v2.transform(built_v2, "DIII-D")
+    j = v2.columns.index("ip_frac")
+    finite = built_v2["ip_frac"].notna().to_numpy()
+    assert np.array_equal(x[finite, j], built_v2["ip_frac"].to_numpy()[finite])
+    xb = v2.transform(built_v2, "MAST", CONFIG_V2.set_columns("set_b"))
+    assert xb.shape == (len(built_v2), 15) and np.isfinite(xb).all()

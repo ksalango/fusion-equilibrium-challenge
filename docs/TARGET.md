@@ -56,9 +56,20 @@ Taken on 12 October 2026 and recorded under "Carried into modelling".
 - Input: the frame table, for Ip at each frame and for the remainder ridge. Flux maps are
   read through the existing loader.
 - Split: `splits/split_v1.json`. Everything fitted is fitted on the `train` list.
-- Machine constants: `fusion_eq/machines.py` (see `docs/FEATURES.md`). The reference radii
-  of both machines are unverified. On MAST they decide where the predicted current is put:
-  an error of 5 cm in the MAST major radius moves the plasma by 1.6 grid cells.
+- Machine constants: `fusion_eq/machines.py` (see `docs/FEATURES.md`). On MAST the reference
+  radii decide where the predicted current is put: an error of 5 cm in the MAST major radius
+  moves the plasma by 1.6 grid cells. Every constant is verified against a published source
+  (13 October 2026); the values are unchanged and the sources are recorded in the file:
+
+  | Constant | Value | Source |
+  | --- | --- | --- |
+  | MAST R0, a0 | 0.85 m, 0.65 m | Sykes et al. 2001, Nucl. Fusion 41 1423, Table 1 |
+  | MAST toroidal-field turns | 24 | Morris 1998, Europhysics News 29(6) 233: 24 centre-column conductors; consistent with the 2.1 MA rod current of Sykes et al. 2001 and the -86 kA per conductor of Berkery et al. 2021 |
+  | DIII-D R0, a0 | 1.67 m, 0.67 m | National Academies 2019, Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G |
+  | DIII-D toroidal-field turns | 144 | F74 |
+
+  The alternative published nominal set for MAST, R0 0.70 m and a0 0.50 m (Morris 1998), is
+  a sensitivity case (Y11), not a constant.
 
 ## Definitions
 
@@ -313,7 +324,7 @@ No MAST label is read.
 | Y8 | Conservation | Pass if placement on MAST conserves the total of the mean share and of 1,000 reconstructed training shares to 1e-10, after the weight outside the MAST grid, which is reported |
 | Y9 | Response | Pass if, on both machines, the response to a unit current in one cell agrees with the coil Green's function for a filament at that node to 1e-3 at nodes more than five cells away, and the response is symmetric under a flip in Z |
 | Y10 | Where the current lands | Review. The mean share and the envelope holding 99 percent of the training shares, placed on MAST and reported in metres: inner and outer radius, height, centroid; distance to the nearest MAST coil element and to the grid edge; coil elements inside the envelope |
-| Y11 | Sensitivity to the constants | Review. Y10's centroid and radii with the MAST R0 and a0 each moved by 5 percent |
+| Y11 | Sensitivity to the constants | Review. Y10's outputs with the MAST R0 and a0 each moved by plus and minus 5 percent, and with the alternative published nominal set R0 0.70 m, a0 0.50 m (Morris 1998) |
 
 ### Remainder
 

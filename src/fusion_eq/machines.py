@@ -165,8 +165,12 @@ DIII_D = MachineConfig(
     # ambiguous (48 single-turn elements in EFIT). Its scale is the quantity the coil-flux
     # phase fits, so the convention here only fixes what "scale 1" means.
     solenoid_turns="per_element",
-    major_radius=MachineConstant(1.67, "m", "Published major radius at Z = 0, from recall; to be confirmed", False),
-    minor_radius=MachineConstant(0.67, "m", "Published minor radius, from recall; to be confirmed", False),
+    major_radius=MachineConstant(1.67, "m", "National Academies of Sciences, Engineering, and Medicine (2019), Final "
+                                 "Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, "
+                                 "Appendix G", True),
+    minor_radius=MachineConstant(0.67, "m", "National Academies of Sciences, Engineering, and Medicine (2019), Final "
+                                 "Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, "
+                                 "Appendix G", True),
     tf_turns=MachineConstant(144.0, "turns", "Confirmed from the data: q95 calculated from the map against the "
                              "label, median ratio 0.997 (F74)", True),
 )
@@ -185,9 +189,13 @@ MAST = MachineConfig(
     mask_file="mast_envelope.npz",
     # 656 single-turn elements sharing one column in kA: every element carries the value.
     solenoid_turns="per_element",
-    major_radius=MachineConstant(0.85, "m", "Published major radius at Z = 0, from recall; to be confirmed", False),
-    minor_radius=MachineConstant(0.65, "m", "Published minor radius, from recall; to be confirmed", False),
-    tf_turns=MachineConstant(24.0, "turns", "From recall, not verified", False),
+    # Alternative published nominal set: R0 0.70 m, a0 0.50 m (Morris 1998), a sensitivity case
+    # of the target phase (docs/TARGET.md, Y11) and of reports/features/v1/backup_radii_check.md.
+    major_radius=MachineConstant(0.85, "m", "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1", True),
+    minor_radius=MachineConstant(0.65, "m", "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1", True),
+    tf_turns=MachineConstant(24.0, "turns", "Morris (1998), Europhysics News 29(6) 233: 24 centre-column conductors; "
+                             "consistent with the 2.1 MA rod current of Sykes et al. (2001) and the -86 kA per "
+                             "conductor of Berkery et al. (2021)", True),
 )
 
 MACHINES: dict[str, MachineConfig] = {m.name: m for m in (DIII_D, MAST)}

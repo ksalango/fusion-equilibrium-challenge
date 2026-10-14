@@ -20,6 +20,7 @@ Requires the frame table built with Part 0 (``__rate50``, ``ip_rise_ms``, ``sol_
 Nothing is written under the raw data root. Usage::
 
     python scripts/build_features.py --config configs/features_v1.yaml
+    python scripts/build_features.py --config configs/features_v2.yaml
 """
 
 from __future__ import annotations

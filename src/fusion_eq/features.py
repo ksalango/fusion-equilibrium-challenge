@@ -1,7 +1,7 @@
 """Transferable features of the plasma model, built from the frame table (``docs/FEATURES.md``).
 
-Every feature is a registered function plus one entry of the configuration file
-(``configs/features_v1.yaml``). A function declares the frame-table columns it reads; the
+Every feature is a registered function plus one entry of a version's configuration file
+(``configs/features_v<version>.yaml``; version 1 is the default). A function declares the frame-table columns it reads; the
 build checks them against the label guard before computing, and the function can read no
 other column. A function returns one column, or several for an entry with ``mirror:
 permute`` (the coil points). Features carry no units: currents are divided by Ip, lengths
@@ -423,6 +423,18 @@ def coil_term(ctx: FeatureContext, term: str) -> np.ndarray:
     if term not in cp.TERM_NAMES:
         raise ValueError(f"unknown term {term!r}; known: {cp.TERM_NAMES}")
     return _coil_terms(ctx)[:, cp.TERM_NAMES.index(term)]
+
+
+@register("shaping", coil_reads)
+def shaping(ctx: FeatureContext) -> np.ndarray:
+    """``(coil_c02 - coil_c20) / 2`` (``feature_checks.shaping``): the stretch quantity left
+    beside ``coil_c10`` when the current-free relation holds (F82). Even under the mirror."""
+    # Imported here: feature_checks imports this module at load time.
+    from fusion_eq.feature_checks import shaping as shaping_of_terms
+
+    terms = _coil_terms(ctx)
+    return shaping_of_terms(pd.DataFrame({name: terms[:, cp.TERM_NAMES.index(name.removeprefix("coil_"))]
+                                          for name in ("coil_c20", "coil_c02")}))
 
 
 # --------------------------------------------------------------- group 2: plasma content

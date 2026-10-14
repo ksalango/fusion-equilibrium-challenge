@@ -22,9 +22,15 @@ Writes to ``<report-root>/v<version>/``:
 - ``correlations.parquet``: X12, the correlation matrices in long form.
 - ``profile.json``: every number of the report, for notebook 06.
 
+For a version after the first, X10 and X11 also show the numbers of the reference version
+(``--reference-version``, 1) from its ``profile.json`` beside the version's own, when that
+run used the same split file, samples and seed (the sampled frames are then the same).
+X8 is not compared: the unscaled values of a feature do not depend on the version.
+
 Usage::
 
     python scripts/profile_features.py
+    python scripts/profile_features.py --config configs/features_v2.yaml
 """
 
 from __future__ import annotations
@@ -53,7 +59,9 @@ GROUPS = ("train", "validation", "diii_d_public_test", "mast_public_test")
 GROUP_MACHINE = {"train": "DIII-D", "validation": "DIII-D", "diii_d_public_test": "DIII-D", "mast_public_test": "MAST"}
 COMPARED = fc.COMPARED_SPLITS
 TERM_COLUMNS = [f"coil_{t}" for t in TERM_NAMES]
-STRETCH_COLUMNS = ("coil_c20", "coil_c02")
+STRETCH_COLUMNS = ("coil_c20", "coil_c02", "shaping")
+# Arguments that must agree for the reference version's X10 and X11 to be shown.
+REFERENCE_KEYS = ("split", "nn_train_frames", "nn_eval_frames", "seed")
 
 
 def log(message: str) -> None:
@@ -80,6 +88,37 @@ def display_path(path: Path | str) -> str:
     """A path relative to the repository when possible, so that committed reports carry no
     absolute home path."""
     return os.path.relpath(Path(path).resolve(), dataset.REPO_ROOT)
+
+
+def stretch_columns(config: fe.FeatureConfig) -> list[str]:
+    """The stretch terms of X9 the configuration builds."""
+    columns = config.all_columns()
+    return [c for c in STRETCH_COLUMNS if c in columns]
+
+
+def load_reference(config: fe.FeatureConfig, args, n_train_rows: int) -> dict | None:
+    """The reference version's profile, or None for the reference version itself.
+
+    Returns:
+        ``{"version", "path", "differences", "comparable", "x10_summary", "x11"}``;
+        ``differences`` names the arguments (and the training row count) in which the runs
+        differ, and the numbers are shown only when there is none.
+    """
+    if config.version == args.reference_version:
+        return None
+    path = Path(args.report_root) / f"v{args.reference_version}" / "profile.json"
+    out = {"version": args.reference_version, "path": display_path(path)}
+    if not path.is_file():
+        return {**out, "differences": {"profile.json": ["missing", "present"]}, "comparable": False}
+    record = json.loads(path.read_text())
+    differences = fc.reference_differences(record.get("arguments", {}), vars(args), REFERENCE_KEYS, path_keys=("split",))
+    ref_rows = record.get("n_rows", {}).get("train")
+    if ref_rows != n_train_rows:
+        differences["n_rows train"] = [ref_rows, n_train_rows]
+    out.update(differences=differences, comparable=not differences)
+    if out["comparable"]:
+        out.update(x10_summary=record["x10"]["summary"], x11=record["x11"])
+    return out
 
 
 def k9_medians(path: Path) -> tuple[dict, str]:
@@ -332,6 +371,18 @@ def _fmt(v, digits: int = 4) -> str:
     return "nan" if v is None or not np.isfinite(v) else f"{v:.{digits}f}"
 
 
+def reference_note(ref: dict) -> str:
+    """One line on the reference version's numbers: shown, or why not."""
+    if ref["comparable"]:
+        return (f"Version {ref['version']} beside this version: `{ref['path']}`, same split file, samples and seed, so the "
+                f"same sampled frames; only the sets and the scaling differ.")
+    def shown_value(key: str, value):
+        return display_path(value) if key == "split" and value not in (None, "missing") else value
+    return (f"Version {ref['version']} not shown: its run differs in "
+            + ", ".join(f"{k} ({shown_value(k, a)} against {shown_value(k, b)})" for k, (a, b) in ref["differences"].items())
+            + ".")
+
+
 def render_report(checks: list[fc.Check], info: dict, ranges: pd.DataFrame, shares: pd.DataFrame,
                   extremes: pd.DataFrame, direction: pd.DataFrame) -> str:
     lines = [f"# Feature profile, version {info['version']}", "",
@@ -383,7 +434,7 @@ def render_report(checks: list[fc.Check], info: dict, ranges: pd.DataFrame, shar
     lines += ["", "## X9. Stretch terms by phase", "",
               "| Term | Phase | Train band | Train median | MAST median | MAST outside band | MAST outside range | "
               "DIII-D test outside band |", "| --- " * 8 + "|"]
-    for feature in STRETCH_COLUMNS:
+    for feature in stretch_columns(info["config"]):
         for phase in fc.PHASES:
             g = ranges.loc[(ranges["feature"] == feature) & (ranges["phase"] == phase)].set_index("split")
             if g.empty:
@@ -394,23 +445,55 @@ def render_report(checks: list[fc.Check], info: dict, ranges: pd.DataFrame, shar
                          f"{_fmt(m['share_outside_range'], 3)} | {_fmt(t['share_outside_band'], 3)} |")
 
     x10 = info["x10"]
+    ref = info.get("reference")
+    shown = ref is not None and ref["comparable"]
     lines += ["", "## X10. Combined distance", "",
               f"Scaled features, {x10['n_train_sample']} training frames (seed {x10['seed']}), up to {x10['n_eval_sample']} "
-              f"frames per compared split. With mirrors: the nearest of the training frames and their mirrors.", "",
-              "| Set | Split | Median | 90th | 99th | Max | Beyond validation 99th | Median with mirrors |", "| --- " * 8 + "|"]
+              f"frames per compared split. With mirrors: the nearest of the training frames and their mirrors.", ""]
+    if ref is not None:
+        lines += [reference_note(ref), ""]
+    header = "| Set | Split | Median | 90th | 99th | Max | Beyond validation 99th | Median with mirrors |"
+    if shown:
+        v = ref["version"]
+        header += f" v{v} median | v{v} 99th | v{v} beyond validation 99th |"
+    lines += [header, "| --- " * (11 if shown else 8) + "|"]
     with_m = {(r["set"], r["split"]): r for r in x10["summary_with_mirrors"]}
+    ref_rows = {(r["set"], r["split"]): r for r in ref["x10_summary"]} if shown else {}
     for r in x10["summary"]:
-        lines.append(f"| {r['set']} | {r['split']} | {_fmt(r['p50'], 3)} | {_fmt(r['p90'], 3)} | {_fmt(r['p99'], 3)} | "
-                     f"{_fmt(r['max'], 3)} | {_fmt(r['share_beyond_validation_p99'], 3)} | {_fmt(with_m[(r['set'], r['split'])]['p50'], 3)} |")
+        line = (f"| {r['set']} | {r['split']} | {_fmt(r['p50'], 3)} | {_fmt(r['p90'], 3)} | {_fmt(r['p99'], 3)} | "
+                f"{_fmt(r['max'], 3)} | {_fmt(r['share_beyond_validation_p99'], 3)} | {_fmt(with_m[(r['set'], r['split'])]['p50'], 3)} |")
+        if shown:
+            q = ref_rows.get((r["set"], r["split"]), {})
+            line += (f" {_fmt(q.get('p50'), 3)} | {_fmt(q.get('p99'), 3)} | {_fmt(q.get('share_beyond_validation_p99'), 3)} |")
+        lines.append(line)
     lines += ["", "Median share of the squared distance carried by each feature group:", ""]
     for r in x10["group_share_medians"]:
         lines.append(f"- {r['set']}, {r['split']}: " + ", ".join(f"{k[6:]} {_fmt(v, 3)}" for k, v in r.items()
                                                                  if k.startswith("share_") and v == v))
 
-    lines += ["", "## X11. Scaled values beyond 10 in magnitude", "", "Features with a non-zero share on any split.", "",
-              "| Feature | " + " | ".join(extremes.columns) + " |", "| --- " * (len(extremes.columns) + 1) + "|"]
-    for feature, row in extremes.loc[(extremes > 0).any(axis=1)].iterrows():
-        lines.append(f"| {feature} | " + " | ".join(_fmt(v, 5) for v in row.to_numpy()) + " |")
+    lines += ["", "## X11. Scaled values beyond 10 in magnitude", ""]
+    if not shown:
+        lines += ["Features with a non-zero share on any split.", "",
+                  "| Feature | " + " | ".join(extremes.columns) + " |", "| --- " * (len(extremes.columns) + 1) + "|"]
+        for feature, row in extremes.loc[(extremes > 0).any(axis=1)].iterrows():
+            lines.append(f"| {feature} | " + " | ".join(_fmt(v, 5) for v in row.to_numpy()) + " |")
+    else:
+        v = ref["version"]
+        ref_x11 = ref["x11"]
+        lines += [f"Features with a non-zero share on any split in either version; each cell is this version's share, "
+                  f"then version {v}'s in brackets (a dash where that version has no such feature).", "",
+                  "| Feature | " + " | ".join(extremes.columns) + " |", "| --- " * (len(extremes.columns) + 1) + "|"]
+        features = list(dict.fromkeys([*extremes.index, *ref_x11]))
+        for feature in features:
+            own = extremes.loc[feature] if feature in extremes.index else None
+            old = ref_x11.get(feature)
+            own_any = own is not None and bool((own > 0).any())
+            old_any = old is not None and any(x is not None and x > 0 for x in old.values())
+            if not (own_any or old_any):
+                continue
+            cells = [f"{'-' if own is None else _fmt(own[g], 5)} ({'-' if old is None else _fmt(old.get(g), 5)})"
+                     for g in extremes.columns]
+            lines.append(f"| {feature} | " + " | ".join(cells) + " |")
 
     x12 = info["x12"]
     lines += ["", "## X12. Correlations (DIII-D training)", ""]
@@ -463,6 +546,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mirror-shots", type=int, default=20)
     parser.add_argument("--rate-thresholds", type=float, nargs="+", default=[0.1, 0.3, 1.0])
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--reference-version", type=int, default=1,
+                        help="version whose X10 and X11 are shown beside this version's (none for that version itself)")
     args = parser.parse_args(argv)
 
     started = time.time()
@@ -509,13 +594,16 @@ def main(argv: list[str] | None = None) -> int:
     checks.append(fc.Check("X8", "Per-feature ranges", "review",
                            "largest MAST share outside the training band: " + ", ".join(
                                f"{r.feature} {r.share_outside_band:.3f}" for r in top.itertuples(index=False))))
-    stretch = ranges.loc[ranges["feature"].isin(STRETCH_COLUMNS) & (ranges["split"] == "mast_public_test")]
+    stretch = ranges.loc[ranges["feature"].isin(stretch_columns(config)) & (ranges["split"] == "mast_public_test")]
     checks.append(fc.Check("X9", "Stretch terms", "review", "MAST share outside the training band by phase: " + "; ".join(
         f"{r.feature} {r.phase} {_fmt(r.share_outside_band, 3)}" for r in stretch.itertuples(index=False))))
     log("X6 to X9 done")
 
     scaled = scaled_matrices(data, scaler)
     c, info["x10"], nn = check_x10(data, scaled, scaler, config, args); checks.append(c)
+    reference = load_reference(config, args, len(data["train"]))
+    if reference is not None:
+        info["reference"] = {k: v for k, v in reference.items() if k not in ("x10_summary", "x11")}
     nn.to_parquet(out_dir / "nn_distance.parquet", index=False)
     c, extremes = check_x11(scaled, scaler); checks.append(c)
     info["x11"] = extremes.to_dict(orient="index")
@@ -529,7 +617,7 @@ def main(argv: list[str] | None = None) -> int:
     info["checks"] = [c.to_dict() for c in checks]
     info.update(run_info(argv, vars(args), timestamp, time.time() - started))
     (out_dir / "profile.json").write_text(json.dumps(info, indent=2, default=fc.json_default) + "\n")
-    report = render_report(checks, info, ranges, shares, extremes, direction)
+    report = render_report(checks, {**info, "config": config, "reference": reference}, ranges, shares, extremes, direction)
     (out_dir / "feature_report.md").write_text(report)
     print(fc.check_table_markdown(checks))
     log(f"wrote {out_dir} in {time.time() - started:.0f} s")

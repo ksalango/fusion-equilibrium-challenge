@@ -85,10 +85,10 @@ def make_workspace(tmp_path: Path) -> dict:
     return {"data": data, "table_dir": table_dir, "green": green, "split": split_file, "tmp": tmp_path}
 
 
-def _run(ws: dict, out: Path, reports: Path) -> subprocess.CompletedProcess:
+def _run(ws: dict, out: Path, reports: Path, *extra: str) -> subprocess.CompletedProcess:
     cmd = [sys.executable, str(REPO_ROOT / "scripts" / "build_features.py"), "--data-root", str(ws["data"]),
            "--table-dir", str(ws["table_dir"]), "--green-dir", str(ws["green"]), "--split", str(ws["split"]),
-           "--out", str(out), "--report-root", str(reports), "--shots-per-chunk", "2"]
+           "--out", str(out), "--report-root", str(reports), "--shots-per-chunk", "2", *extra]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
 
@@ -110,7 +110,7 @@ def test_build_features_script_end_to_end_and_deterministic(workspace):
     info = json.loads((out1 / "v1" / "build.json").read_text())
     assert info["x1_pass"] and info["layout_check"]["status"] == "pass"
     assert info["counts"]["diii_d_train"] == {"n_shots": 3, "n_rows": 29, "n_frame_table_rows": 29, "x1_rows_match": True}
-    assert info["resources"]["MAST"]["constants"]["tf_turns"]["verified"] is False
+    assert info["resources"]["MAST"]["constants"]["tf_turns"]["verified"] is True
     assert info["resources"]["DIII-D"]["point_table"]["built"] and info["config_hash"] == config.hash()
     assert info["scaler"]["n_train_shots_found"] == 2 and info["scaler"]["n_rows_with_mirrors"] == 2 * (12 + 12)
     assert all(fe.check_reads(cols, m) for m, reads in info["x2_reads"].items() for cols in reads.values())

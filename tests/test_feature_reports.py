@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -35,11 +36,11 @@ def ws(tmp_path_factory) -> dict:
     return ws
 
 
-def run_profile(ws: dict, feature_root: Path | None = None) -> subprocess.CompletedProcess:
+def run_profile(ws: dict, feature_root: Path | None = None, *extra: str) -> subprocess.CompletedProcess:
     cmd = [sys.executable, str(REPO_ROOT / "scripts" / "profile_features.py"), "--split", str(ws["split"]),
            "--feature-root", str(feature_root or ws["features"]), "--report-root", str(ws["reports"]),
            "--table-dir", str(ws["table_dir"]), "--green-dir", str(ws["green"]), "--data-root", str(ws["data"]),
-           *PROFILE_SAMPLES]
+           *PROFILE_SAMPLES, *extra]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
 
@@ -312,3 +313,71 @@ def test_backup_radii_check_stops_on_a_failing_clearance_and_refuses_the_version
     assert "Stopped" in (ws["reports"] / "v1" / "backup_radii_check.md").read_text()
     inside = run_backup_radii(ws, "--scratch-dir", str(ws["features"] / "v1" / "backup"))
     assert inside.returncode != 0 and "inside" in inside.stderr and not (ws["features"] / "v1" / "backup").exists()
+
+
+CONFIG_V2_PATH = REPO_ROOT / "configs" / "features_v2.yaml"
+
+
+def hashes(folder: Path) -> dict[str, str]:
+    return {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(folder.rglob("*")) if p.is_file()}
+
+
+def test_version_2_reports_show_version_1_beside_and_leave_version_1_unchanged(ws, profiled, linear):
+    v1_before = {"features": hashes(ws["features"] / "v1"), "reports": hashes(ws["reports"] / "v1")}
+    config = fe.FeatureConfig.load(CONFIG_V2_PATH)
+
+    result = _run(ws, ws["features"], ws["reports"], "--config", str(CONFIG_V2_PATH))
+    assert result.returncode == 0, result.stderr
+    train = fe.read_features("diii_d_train", 2, root=ws["features"])
+    assert list(train.columns) == ["shot", "frame", *config.all_columns()]
+    # Stored as float32: shaping is computed in float64 before rounding, so the stored terms give it to float32 precision.
+    scale = np.abs(train[["coil_c02", "coil_c20"]].to_numpy()).max()
+    assert np.allclose(train["shaping"], 0.5 * (train["coil_c02"] - train["coil_c20"]), rtol=0, atol=1e-6 * scale)
+    v1_train = fe.read_features("diii_d_train", 1, root=ws["features"])
+    pd.testing.assert_frame_equal(train[v1_train.columns], v1_train)
+    scaler = json.loads((ws["reports"] / "v2" / "scaler.json").read_text())
+    assert scaler["source"]["ip_frac"] == [0.0, 1.0] and "shaping" in scaler["source"]
+
+    result = run_profile(ws, None, "--config", str(CONFIG_V2_PATH))
+    assert result.returncode == 0, result.stderr
+    info = json.loads((ws["reports"] / "v2" / "profile.json").read_text())
+    assert info["version"] == 2 and info["reference"] == {"version": 1, "path": info["reference"]["path"],
+                                                          "differences": {}, "comparable": True}
+    assert {c["id"]: c["status"] for c in info["checks"]}["X1"] == "pass" and all(info["x5"]["identity"].values())
+    report = (ws["reports"] / "v2" / "feature_report.md").read_text()
+    assert "Version 1 beside this version" in report and "v1 median" in report and "/Users/" not in report
+    assert "| shaping | flat_top |" in report or "| shaping | all |" in report
+    # set_a differs from version 1 only in the scaling of ip_frac; the v1 columns hold version 1's numbers.
+    v1_x10 = {(r["set"], r["split"]): r["p50"] for r in profiled["info"]["x10"]["summary"]}
+    row = next(line for line in report.splitlines() if line.startswith("| set_b | mast_public_test |"))
+    assert row.split("|")[9].strip() == f"{v1_x10[('set_b', 'mast_public_test')]:.3f}"
+
+    result = run_linear_check(ws, "--config", str(CONFIG_V2_PATH))
+    assert result.returncode == 0, result.stderr
+    v2 = json.loads((ws["reports"] / "v2" / "linear_check.json").read_text())
+    assert v2["reference"]["comparable"] and v2["status"]["features_set_b"]["n_inputs"] == 15
+    # shafranov_lambda is a coil term in version 2: leaving out coil_terms leaves the seven non-coil features.
+    assert v2["coefficient_r2"]["features_set_b without coil_terms"]["n_inputs"] == 7
+    assert not any("candidate" in name for name in v2["coefficient_r2"])
+    s1 = {(r["model"], r["subset"]): r["S"] for r in linear["scores"]}
+    s2 = {(r["model"], r["subset"]): r["S"] for r in v2["scores"]}
+    # hybrid_ridge reads no feature: the same score in both versions, on the same frames.
+    assert s2[("hybrid_ridge", "all")] == s1[("hybrid_ridge", "all")]
+    assert v2["coefficient_r2"]["raw inputs of hybrid_ridge"] == linear["coefficient_r2"]["raw inputs of hybrid_ridge"]
+    md = (ws["reports"] / "v2" / "linear_check.md").read_text()
+    assert "| features_set_b (v1) |" in md and "v1 S - hybrid_ridge" in md and "v1 validation" in md
+
+    # Follow-up under version 2: the base variant carries the version's name.
+    result = run_linear_check(ws, "--config", str(CONFIG_V2_PATH), "--ip-frac-unscaled")
+    assert result.returncode == 0, result.stderr
+    follow = json.loads((ws["reports"] / "v2" / "linear_check_followup.json").read_text())
+    assert follow["base_variant"] == "version 2" and follow["variants"] == ["version 2", "ip_frac_unscaled"]
+    assert follow["coefficient_r2"]["ip_frac_unscaled"] == follow["coefficient_r2"]["version 2"]
+
+    # A profile with other samples does not show version 1, and says why.
+    result = run_profile(ws, None, "--config", str(CONFIG_V2_PATH), "--seed", "1")
+    assert result.returncode == 0, result.stderr
+    report = (ws["reports"] / "v2" / "feature_report.md").read_text()
+    assert "Version 1 not shown" in report and "seed (0 against 1)" in report and "v1 median" not in report
+
+    assert hashes(ws["features"] / "v1") == v1_before["features"] and hashes(ws["reports"] / "v1") == v1_before["reports"]

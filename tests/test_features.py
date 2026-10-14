@@ -4,6 +4,7 @@ the mirror, on synthetic frame rows and synthetic coil sets."""
 from __future__ import annotations
 
 import copy
+import dataclasses
 
 import numpy as np
 import pandas as pd
@@ -346,3 +347,97 @@ def test_ohmic_flux_used_is_the_solenoid_flux_since_the_rise(table):
     delta = (frames["sol__mean"] - frames["sol_at_rise"]).to_numpy()
     expected = table.patterns[sol, -1] * delta / (cf.MU0 * R0 * frames["ip__mean"].to_numpy() * 1000.0)
     assert np.allclose(out["ohmic_flux_used"], expected, rtol=1e-12)
+
+
+# ------------------------------------------------------------------------------ version 2
+CONFIG_V2 = fe.FeatureConfig.load(fe.DEFAULT_CONFIG.with_name("features_v2.yaml"))
+
+
+def test_version_2_changes_only_shaping_ip_frac_scaling_and_set_b():
+    assert CONFIG.version == 1 and CONFIG_V2.version == 2 and CONFIG_V2.hash() != CONFIG.hash()
+    v1 = {s.name: s for s in CONFIG.features}
+    v2 = {s.name: s for s in CONFIG_V2.features}
+    # Every version-1 feature is still built; shaping is the only new one (no ts_te_peaking:
+    # the frame table holds no core mean Te).
+    assert set(v2) - set(v1) == {"shaping"} and set(v1) <= set(v2)
+    assert {n for n in v1 if v1[n] != v2[n]} == {"ip_frac", "shafranov_lambda"}
+    assert dataclasses.replace(v2["shafranov_lambda"], group="candidate", note="") == v1["shafranov_lambda"]
+    assert v2["shafranov_lambda"].group == "coil_terms"
+    assert v2["ip_frac"].scale == "none"
+    assert dataclasses.replace(v2["ip_frac"], scale="robust", note=v1["ip_frac"].note) == v1["ip_frac"]
+    s = v2["shaping"]
+    assert (s.function, s.group, s.mirror, s.scale, s.uses_future, s.params) == \
+        ("shaping", "coil_terms", "even", "robust", False, {})
+    assert np.array_equal(CONFIG_V2.layout.points, CONFIG.layout.points)
+    assert CONFIG_V2.layout.min_clearance_m == CONFIG.layout.min_clearance_m and CONFIG_V2.min_abs_ip_ka == CONFIG.min_abs_ip_ka
+    assert CONFIG_V2.sets["set_a"] == CONFIG.sets["set_a"]
+    assert CONFIG_V2.sets["set_b"] == ("shafranov_lambda", "coil_c01", "shaping", "coil_c11", "coil_c30", "coil_c21",
+                                       "coil_c12", "coil_c03", *CONFIG.sets["set_b"][9:])
+    assert len(CONFIG_V2.set_columns("set_b")) == 15 and set(CONFIG_V2.sets) == set(CONFIG.sets)
+    # set_b without coil_terms leaves out the whole coil description: the seven plasma, field and position features.
+    groups = {n: v2[n].group for n in CONFIG_V2.sets["set_b"]}
+    assert [n for n, g in groups.items() if g != "coil_terms"] == list(CONFIG.sets["set_b"][9:])
+    assert "candidate" not in groups.values()
+    v1_columns = CONFIG.all_columns()
+    after = v1_columns.index("coil_c03") + 1
+    assert CONFIG_V2.all_columns() == [*v1_columns[:after], "shaping", *v1_columns[after:]]
+
+
+def test_version_2_writes_to_its_own_folders():
+    assert fe.features_dir(2) == fe.DEFAULT_FEATURE_ROOT / "v2" and fe.features_dir(1) == fe.DEFAULT_FEATURE_ROOT / "v1"
+    assert fe.features_path("mast_public_test", 2).parent.name == "v2"
+    assert fe.scaler_path(2) == fe.DEFAULT_REPORT_ROOT / "v2" / "scaler.json"
+
+
+def test_shaping_is_half_of_c02_less_c20_and_leaves_every_version_1_feature_unchanged(table):
+    frames = make_frames()
+    v2 = fe.build_features(frames, "DIII-D", CONFIG_V2, resources(table))
+    v1 = fe.build_features(frames, "DIII-D", CONFIG, resources(table))
+    assert np.array_equal(v2["shaping"], 0.5 * (v2["coil_c02"] - v2["coil_c20"]))
+    assert np.isfinite(v2["shaping"]).all() and np.abs(v2["shaping"]).min() > 0
+    assert v2[["shot", "frame", *CONFIG.all_columns()]].equals(v1)
+
+
+def test_shaping_recovers_the_quadrupole_of_an_exact_cubic_pattern():
+    coefficients = np.array([0.8, -0.3, 0.25, 0.1, -0.4, 0.05, -0.07, 0.02, 0.09])
+    pts = np.vstack([CONFIG_V2.layout.points, [[0.0, 0.0]]])
+    poly = cp.term_matrix(pts) @ coefficients + 0.3
+    patterns = (cf.MU0 * R0 * 1.0e6 * poly)[None, :]
+    table = cf.PointTable("DIII-D", ("magnetics_ECOILA",), patterns, np.zeros(pts.shape[0]), np.zeros(pts.shape[0]), 1, "g", "p")
+    frames = make_frames(n_shots=1, n_frames=2)
+    frames["ip__mean"], frames["sol__mean"] = 1000.0, 1.0
+    out = fe.build_features(frames, "DIII-D", CONFIG_V2, resources(table), names=["shaping"])
+    c20, c02 = coefficients[cp.TERM_NAMES.index("c20")], coefficients[cp.TERM_NAMES.index("c02")]
+    assert np.allclose(out["shaping"], 0.5 * (c02 - c20), rtol=0, atol=1e-12)
+
+
+def test_shaping_reads_what_the_named_terms_read_and_passes_the_label_guard(table):
+    for machine in ("DIII-D", "MAST"):
+        reads = fe.feature_reads(CONFIG_V2, machine)
+        assert reads["shaping"] == reads["coil_c20"] == reads["coil_c02"]
+        assert fe.check_reads(reads["shaping"], machine)
+        assert not any(c.startswith(("efit_", "magnetics_dsep")) for c in reads["shaping"])
+    # A label column present in the rows is never read, and the result does not depend on it.
+    frames = make_frames()
+    plain = fe.build_features(frames, "DIII-D", CONFIG_V2, resources(table), names=["shaping"])
+    labelled = fe.build_features(frames.assign(efit_q95=4.0, efit_li=1.0), "DIII-D", CONFIG_V2, resources(table),
+                                 names=["shaping"])
+    assert labelled.equals(plain)
+    with pytest.raises(KeyError):
+        fe.build_features(frames.drop(columns=["magnetics_F1A__mean"]), "DIII-D", CONFIG_V2, resources(table),
+                          names=["shaping"])
+    with pytest.raises(ValueError, match="point table"):
+        fe.build_features(frames, "DIII-D", CONFIG_V2, resources(), names=["shaping"])
+
+
+def test_shaping_is_even_under_the_mirror_and_equals_the_shaping_of_the_flipped_field(table):
+    frames = make_frames()
+    out = fe.build_features(frames, "DIII-D", CONFIG_V2, resources(table))
+    once = fe.mirror_features(out, CONFIG_V2)
+    assert once["shaping"].equals(out["shaping"]) and fe.mirror_features(once, CONFIG_V2).equals(out)
+    assert np.array_equal(once["coil_c01"], -out["coil_c01"])
+    flipped = fe.build_features(swapped_ab(frames), "DIII-D", CONFIG_V2, resources(table))
+    scale = np.abs(out[COIL_COLUMNS].to_numpy()).max()
+    assert np.allclose(flipped["shaping"], out["shaping"], rtol=0, atol=1e-10 * scale)
+    # The flip changes the odd terms, so the agreement of shaping is not trivial.
+    assert np.abs(flipped["coil_c01"] + out["coil_c01"]).max() < 1e-10 * scale < np.abs(out["coil_c01"]).max()
