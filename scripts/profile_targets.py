@@ -43,6 +43,10 @@ F79 = {"remainder_share": {"all": 0.0105, "rising": 0.0193, "flat_top": 0.0093, 
 SCORE_KEYS = ("S", "r2_psi", "r2_qb", "one_minus_dlcfs", "consistency", "r2_R_axis", "r2_Z_axis", "r2_kappa", "r2_tri_top",
               "r2_tri_bot", "r2_volume", "r2_li")
 DERIVED = ("R_axis", "Z_axis", "kappa")
+# Size of the found boundary (tc.boundary_extent), in metres.
+EXTENT = ("inner_R", "outer_R", "width", "height")
+Y16_LABELS = {"R_axis": "R_axis (m)", "Z_axis": "Z_axis (m)", "kappa": "kappa", "inner_R": "Inner R (m)",
+              "outer_R": "Outer R (m)", "width": "Width (m)", "height": "Height (m)"}
 
 
 def log(message: str) -> None:
@@ -273,11 +277,13 @@ def check_y15(path: Path) -> tuple[tc.Check, dict]:
 
 
 def derived_on_maps(maps: np.ndarray, machine: str) -> dict:
-    """Share of maps on which the scorer finds a closed boundary, and the medians of the derived
-    R_axis, Z_axis and kappa (scorer functions, the machine's envelope)."""
+    """Share of maps on which the scorer finds a closed boundary; over those maps, the derived
+    R_axis, Z_axis and kappa (scorer functions, the machine's envelope) and the boundary's inner
+    and outer radius, width and height in metres: medians, and count, 5th, 50th and 95th
+    percentiles under ``spread``."""
     scorer = starter_kit.scoring()
     env = starter_kit.envelope_mask(machine_config(machine))
-    found, values = 0, {k: [] for k in DERIVED}
+    found, values = 0, {k: [] for k in (*DERIVED, *EXTENT)}
     for psi in maps:
         p = np.asarray(psi, dtype=np.float64)
         contour = scorer.lcfs.extract_lcfs(p, env.grid_R, env.grid_Z, machine, env.mask_coarse, env.mask_f)
@@ -285,11 +291,18 @@ def derived_on_maps(maps: np.ndarray, machine: str) -> dict:
             continue
         found += 1
         vals = scorer.derive.derive_frame(p, env.grid_R, env.grid_Z, machine, env.mask_coarse, env.mask_f, contour=contour)
-        for k in DERIVED:
-            values[k].append(vals[k])
+        vals = {**{k: vals[k] for k in DERIVED}, **tc.boundary_extent(contour)}
+        for k, v in vals.items():
+            values[k].append(v)
     n = len(maps)
     return {"n_frames": n, "boundary_share": found / n if n else float("nan"),
-            **{f"median_{k}": float(np.nanmedian(v)) if v else float("nan") for k, v in values.items()}}
+            **{f"median_{k}": float(np.nanmedian(v)) if v else float("nan") for k, v in values.items()},
+            "spread": {k: tc.quantiles(v) for k, v in values.items()}}
+
+
+def spread_text(q: dict, digits: int = 3) -> str:
+    """``median (5th to 95th)`` of a ``tc.quantiles`` result."""
+    return f"{q['q50']:.{digits}f} ({q['q5']:.{digits}f} to {q['q95']:.{digits}f})"
 
 
 def check_y16(objects, split: dict, record: dict, args, workers: int) -> tuple[tc.Check, dict]:
@@ -335,7 +348,9 @@ def check_y16(objects, split: dict, record: dict, args, workers: int) -> tuple[t
     for m in tb.MACHINES:
         v = out[f"test_{m}"]
         parts.append(f"{m} test ({v['n_frames']} frames): boundary on {v['boundary_share']:.3f}, median R_axis "
-                     f"{v['median_R_axis']:.3f} m, Z_axis {v['median_Z_axis']:+.3f} m, kappa {v['median_kappa']:.3f}")
+                     f"{v['median_R_axis']:.3f} m, Z_axis {v['median_Z_axis']:+.3f} m, kappa {v['median_kappa']:.3f}, "
+                     f"boundary inner R {v['median_inner_R']:.3f} m, outer R {v['median_outer_R']:.3f} m, "
+                     f"width {v['median_width']:.3f} m, height {v['median_height']:.3f} m")
     return tc.Check("Y16", "Mean current", "review", "; ".join(parts)), out
 
 
@@ -386,6 +401,18 @@ def render(checks: list[tc.Check], info: dict) -> str:
         for k, s in y16.items():
             if k.startswith("validation"):
                 lines.append(f"| {k} | " + " | ".join(f"{s.get(x, float('nan')):.4f}" for x in SCORE_KEYS) + " |")
+        lines.append("")
+    tests = {k[len("test_"):]: v for k, v in y16.items() if k.startswith("test_") and "spread" in v}
+    if tests:
+        lines += ["## Y16. Mean current on the test frames", "",
+                  "Inputs only. Over the frames on which the scorer finds a closed boundary in the composed map: the "
+                  "derived R_axis, Z_axis and kappa and the boundary's inner and outer radius, width and height, as "
+                  "median (5th to 95th percentile).", "",
+                  "| Machine | Frames | Boundary found | " + " | ".join(Y16_LABELS.values()) + " |",
+                  "| --- " * (3 + len(Y16_LABELS)) + "|"]
+        for m, v in tests.items():
+            lines.append(f"| {m} | {v['n_frames']} | {v['boundary_share']:.3f} | "
+                         + " | ".join(spread_text(v["spread"][k]) for k in Y16_LABELS) + " |")
         lines.append("")
     lines += [f"Runtime {info['runtime_s']:.0f} s.", ""]
     return "\n".join(lines)

@@ -279,3 +279,23 @@ def landing(mean_share, region, grid_r, grid_z, geometry: CoilGeometry) -> dict:
             "nearest_coil": str(geometry.input_columns[nearest[int(np.argmin(dist))]]),
             "edge_distance_m": float(edge.min()),
             "coils_inside": sorted({str(c) for c in geometry.input_columns[inside]}), "n_elements_inside": int(inside.sum())}
+
+
+# -------------------------------------------------------------------------------- Y16
+def boundary_extent(contour) -> dict:
+    """Size of a closed boundary, in metres.
+
+    Args:
+        contour: ``(n_points, 2)`` physical (R, Z) polygon in metres, as the scorer's
+            ``extract_lcfs`` returns it.
+
+    Returns:
+        ``inner_R`` and ``outer_R`` (smallest and largest R), ``width`` (their difference) and
+        ``height`` (largest minus smallest Z).
+    """
+    c = np.asarray(contour, dtype=np.float64)
+    if c.ndim != 2 or c.shape[1] != 2 or c.shape[0] == 0:
+        raise ValueError(f"expected an (n_points, 2) contour, got shape {c.shape}")
+    r, z = c[:, 0], c[:, 1]
+    return {"inner_R": float(r.min()), "outer_R": float(r.max()), "width": float(r.max() - r.min()),
+            "height": float(z.max() - z.min())}

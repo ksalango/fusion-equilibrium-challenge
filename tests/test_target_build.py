@@ -151,8 +151,23 @@ def test_profile_writes_every_check(ws, profiled):
     y16 = info["Y16"]
     assert {"validation_with_remainder", "validation_without_remainder", "test_DIII-D", "test_MAST"} <= set(y16)
     assert 0.0 <= y16["test_MAST"]["boundary_share"] <= 1.0 and y16["test_MAST"]["n_frames"] > 0
+    for m in ("DIII-D", "MAST"):
+        v = y16[f"test_{m}"]
+        spread = v["spread"]
+        assert set(spread) == {"R_axis", "Z_axis", "kappa", "inner_R", "outer_R", "width", "height"}
+        # Every quantity is counted over the frames with a boundary.
+        assert all(s["n"] == round(v["boundary_share"] * v["n_frames"]) for s in spread.values())
+        if spread["width"]["n"]:
+            assert spread["inner_R"]["q50"] == v["median_inner_R"] and spread["kappa"]["q50"] == v["median_kappa"]
+            assert spread["inner_R"]["q5"] <= spread["inner_R"]["q50"] <= spread["inner_R"]["q95"]
+            assert spread["inner_R"]["q50"] < v["median_R_axis"] < spread["outer_R"]["q50"]
+            assert spread["width"]["q5"] > 0.0 and spread["height"]["q5"] > 0.0
+            assert spread["width"]["q50"] <= spread["outer_R"]["q95"] - spread["inner_R"]["q5"]
+    assert "inner R" in checks["Y16"]["summary"] and "height" in checks["Y16"]["summary"]
     report = (tmp_path / "reports" / "v1" / "target_report.md").read_text()
     assert "## Y9. Response" in report and "Ring share, largest" in report and "## Y10 and Y11" in report and "/Users/" not in report
+    assert "## Y16. Mean current on the test frames" in report and "| Inner R (m) | Outer R (m) | Width (m) | Height (m) |" in report
+    assert "| MAST | " in report.split("## Y16. Mean current on the test frames")[1]
 
 
 def test_mean_current_v0_composes_the_target_build_on_both_machines(ws, tmp_path):
@@ -214,14 +229,21 @@ def test_notebook_runs_on_the_synthetic_outputs(ws, profiled, tmp_path):
     assert not any(o.get("output_type") == "error" for c in nb.cells if c.cell_type == "code" for o in c.outputs)
     headings = [c.source.splitlines()[0] for c in nb.cells if c.cell_type == "markdown" and c.source.startswith("## ")]
     assert [h.split(".")[0] for h in headings] == [f"## {i}" for i in range(1, 9)]
-    # Section 8 holds headings only.
+    # Section 8 holds the six decisions of docs/TARGET.md, each with its answer and the finding it rests on.
     findings = [c for c in nb.cells if c.cell_type == "markdown" and c.source.startswith("## 8.")][0]
-    assert all(line.startswith("#") for line in findings.source.splitlines() if line.strip())
+    decisions = findings.source.split("\n### ")[1:]
+    assert [d.splitlines()[0] for d in decisions] == [
+        "Number of current components", "Whether the model phase rescales the predicted share", "Placement resolution",
+        "Rate window of the remainder ridge", "MAST reference radii", "Target B or the fallback"]
+    for d in decisions:
+        body = " ".join(line for line in d.splitlines()[1:] if line.strip())
+        assert body and "(F9" in body, d
     text = "\n".join(str(o.get("data", {}).get("text/plain", "")) + o.get("text", "")
                      for c in nb.cells if c.cell_type == "code" for o in c.outputs)
     # The notebook found the profile summary and the ceiling report (the profile itself ran without a ceiling).
     assert "target_summary.json not found" not in text and f"{ceiling} not found" not in text
     assert "| Y16 | Mean current |" in text and "Ring guard" in text
+    assert "| inner_R |" in text and "| height |" in text and "no boundary size" not in text
     assert "recomposed from the parts against the stored map" in text and "| h_symmetric_50 |" in text and "b_other" not in text
     recomposed = float(text.split("recomposed from the parts against the stored map: ")[1].split(" ")[0])
     assert recomposed < 1e-10

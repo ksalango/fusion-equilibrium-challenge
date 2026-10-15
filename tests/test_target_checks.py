@@ -33,6 +33,22 @@ def test_status_checks_and_quantiles():
     assert q["n"] == 3 and q["q50"] == 2.0
 
 
+def test_boundary_extent_of_a_known_contour():
+    # An ellipse centred at R 1.7 m, Z 0.1 m with half-width 0.6 m and half-height 1.2 m, sampled
+    # through its four extreme points.
+    t = np.linspace(0.0, 2.0 * np.pi, 401)
+    contour = np.column_stack([1.7 + 0.6 * np.cos(t), 0.1 + 1.2 * np.sin(t)])
+    e = tc.boundary_extent(contour)
+    assert e["inner_R"] == pytest.approx(1.1, abs=1e-12) and e["outer_R"] == pytest.approx(2.3, abs=1e-12)
+    assert e["width"] == pytest.approx(1.2, abs=1e-12) and e["height"] == pytest.approx(2.4, abs=1e-12)
+    # Moving the contour leaves width and height unchanged.
+    moved = tc.boundary_extent(contour + [0.25, -0.4])
+    assert moved["width"] == pytest.approx(e["width"]) and moved["height"] == pytest.approx(e["height"])
+    assert moved["inner_R"] == pytest.approx(1.35)
+    with pytest.raises(ValueError, match="contour"):
+        tc.boundary_extent(np.zeros((5, 3)))
+
+
 def test_parity_mirror_flux_basis_and_conservation():
     s = shares(20)
     basis = cb.CurrentBasis.fit([s], n_components=8)

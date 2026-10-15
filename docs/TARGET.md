@@ -339,7 +339,7 @@ No MAST label is read.
 | Id | Check | Content |
 | --- | --- | --- |
 | Y15 | Variants h to k | The table of Part 5 with every score term, beside f and g |
-| Y16 | Mean current | `mean_current_v0` on DIII-D validation with and without the remainder (every score term). On 2,000 MAST test frames and 2,000 DIII-D test frames: share of frames on which the scorer finds a closed boundary in the composed map, and the medians of the derived R_axis, Z_axis and kappa. Review |
+| Y16 | Mean current | `mean_current_v0` on DIII-D validation with and without the remainder (every score term). On 2,000 MAST test frames and 2,000 DIII-D test frames: share of frames on which the scorer finds a closed boundary in the composed map, the medians of the derived R_axis, Z_axis and kappa, and the found boundary's inner radius, outer radius, width and height (median and 5th to 95th percentile, with the same for R_axis, Z_axis and kappa in the report table). Review |
 
 ## Review notebook
 
