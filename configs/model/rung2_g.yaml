@@ -1,0 +1,9 @@
+# Part 7, priority 4 (rung 2, D18 item A): gru_seq on set_a under arm G's loss (flux, gradient
+# and boundary-band terms).
+base: arm_g.yaml
+
+model:
+  name: gru_seq
+
+rung2:
+  name: gru_seq

@@ -1,0 +1,6 @@
+# Part 7, priority 5 (D8): set_a with the shot_position group (ip_frac, ip_rate_rel,
+# resistive_age) left out, under arm G's loss settings.
+base: arm_g.yaml
+
+features:
+  drop_groups: [shot_position]

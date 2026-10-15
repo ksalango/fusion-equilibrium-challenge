@@ -1,0 +1,639 @@
+{
+  "run": "2026-10-14_smoke_arm_f",
+  "name": "smoke_arm_f",
+  "built_at": "2026-10-15T04:31:55+00:00",
+  "repo_commit": "9ad51f7dcdeb9007c022d6cf98aa2c94f3aa8a05",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "--run 20261015T033844_e82e8704_s0 --name smoke_arm_f --max-shots 20 --working",
+  "split_file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+  "predictor": "rung1_v1",
+  "source": "tables",
+  "machines": [
+    "DIII-D",
+    "MAST"
+  ],
+  "data_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/raw/data",
+  "folds": {
+    "DIII-D": {
+      "machine": "DIII-D",
+      "n_shots": 20,
+      "n_frames": 4387,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "0047b7837b",
+      "last_shot": "04bee36b3f",
+      "seconds": 8.518298864364624
+    },
+    "MAST": {
+      "machine": "MAST",
+      "n_shots": 20,
+      "n_frames": 1122,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "0035568738",
+      "last_shot": "0520cc39eb",
+      "shot_checks": [
+        {
+          "index": 0,
+          "shot": "0035568738",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 753.2074890136719,
+          "sol_median_ka": -24.24605026245117,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.18976790850556335
+        },
+        {
+          "index": 1,
+          "shot": "00398d18da",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 615.5968017578125,
+          "sol_median_ka": -37.07859247381037,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.3388837481427745
+        },
+        {
+          "index": 2,
+          "shot": "0052369c79",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 805.7985961914062,
+          "sol_median_ka": -23.538192558288575,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.19040060921618832
+        },
+        {
+          "index": 3,
+          "shot": "009ba0ad8d",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 882.7138122558594,
+          "sol_median_ka": -25.883664512634276,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.21629460183116572
+        },
+        {
+          "index": 4,
+          "shot": "00db024f42",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 571.2967686508673,
+          "sol_median_ka": -10.066870053609211,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.11115919432002203
+        },
+        {
+          "index": 5,
+          "shot": "0162ff5611",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 622.7611419677735,
+          "sol_median_ka": -30.8759503364563,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.2963663792419393
+        },
+        {
+          "index": 6,
+          "shot": "018ab61eba",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 731.3208557128906,
+          "sol_median_ka": -15.832967376708984,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.18149299450828624
+        },
+        {
+          "index": 7,
+          "shot": "01919de346",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 624.9957343207466,
+          "sol_median_ka": -16.247824096679686,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.21622603242085797
+        },
+        {
+          "index": 8,
+          "shot": "01c7c14ce8",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 687.5460452609592,
+          "sol_median_ka": -13.363432017239656,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.15941083844068604
+        },
+        {
+          "index": 9,
+          "shot": "0217859390",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 619.3704956054687,
+          "sol_median_ka": -19.817312812805177,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.21929605587954626
+        },
+        {
+          "index": 10,
+          "shot": "0233023bc3",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 723.0276489257812,
+          "sol_median_ka": -27.00051612854004,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.25497597974741126
+        },
+        {
+          "index": 11,
+          "shot": "026a887380",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 634.2180480957031,
+          "sol_median_ka": -33.253638076782224,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.3034474705750189
+        },
+        {
+          "index": 12,
+          "shot": "02a43a2db9",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 789.3350036621093,
+          "sol_median_ka": -24.19478874206543,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.2292777649042409
+        },
+        {
+          "index": 13,
+          "shot": "02d9558a2b",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 881.7837097167969,
+          "sol_median_ka": -34.47213993072509,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.25578604033311647
+        },
+        {
+          "index": 14,
+          "shot": "02f0948202",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 783.4005859375,
+          "sol_median_ka": -23.674508624606663,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.21366339510585097
+        },
+        {
+          "index": 15,
+          "shot": "033d230355",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 853.5114074707031,
+          "sol_median_ka": -29.618590068817138,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.23286621719800513
+        },
+        {
+          "index": 16,
+          "shot": "03fc9fc885",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 633.1448547363282,
+          "sol_median_ka": -29.566984748840333,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.2892524422213749
+        },
+        {
+          "index": 17,
+          "shot": "041670dcb0",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 568.5024505615233,
+          "sol_median_ka": -24.03560380935669,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.2624245203645367
+        },
+        {
+          "index": 18,
+          "shot": "043a7babdf",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 799.364144897461,
+          "sol_median_ka": -26.204973697662354,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.23002107874145003
+        },
+        {
+          "index": 19,
+          "shot": "0520cc39eb",
+          "ip_sign": 1,
+          "ip_abs_median_ka": 641.2972253972835,
+          "sol_median_ka": -42.496079953511554,
+          "sol_flux_rel_std": 0.401478256770935,
+          "sol_range_share_of_coil_range": 0.33178708282607533
+        }
+      ],
+      "seconds": 9.170142889022827,
+      "mast_checks_summary": {
+        "shots_by_ip_sign": {
+          "positive": 20,
+          "negative": 0,
+          "mixed_or_absent": 0
+        },
+        "sol_flux_rel_std": 0.401478256770935,
+        "sol_range_share_of_coil_range_quantiles": {
+          "0.05": 0.15699825623465286,
+          "0.5": 0.22964942182284548,
+          "0.95": 0.3321419160919103
+        }
+      },
+      "mast_sign_asserted": 1.0
+    }
+  },
+  "files": {
+    "diii_d_public_test.npz": {
+      "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-14_smoke_arm_f/diii_d_public_test.npz",
+      "sha256": "4bc9ef42fd9760360ce518599d8e06deb73e5c61a62270779b0787401adbc724",
+      "bytes": 31536039
+    },
+    "mast_public_test.npz": {
+      "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-14_smoke_arm_f/mast_public_test.npz",
+      "sha256": "20dd8c9dc34ab9a535744410e59bec1160cdc9da3f729eb443995aea45b8be89",
+      "bytes": 7817855
+    }
+  },
+  "training_lists": {
+    "train": "working_train",
+    "validation": "working_validation"
+  },
+  "heads": {
+    "file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-14_smoke_arm_f/betan_heads.pkl",
+    "sha256": "73e4280db408310b631b2965743806a949782bd186c24084ae02f66a0329ac73",
+    "summary": {
+      "heads": {
+        "DIII-D": "ridge_raw",
+        "MAST": "formula_gbm"
+      },
+      "d3d_n_train": 16397,
+      "d3d_alpha": 1.0,
+      "mast_fitted": true,
+      "mast_constant": 3.5900992344588767,
+      "mast_n_train": 16397,
+      "mast_features": [
+        "ts_pe_peaking",
+        "ts_valid",
+        "shafranov_lambda",
+        "greenwald_frac",
+        "ip_frac",
+        "ohmic_flux_used",
+        "shaping",
+        "q_cyl_clipped",
+        "kappa",
+        "a_over_a0"
+      ],
+      "gbm": {
+        "max_iter": 200,
+        "max_depth": 3,
+        "learning_rate": 0.1,
+        "seed": 0
+      },
+      "q_cyl_band": [
+        1.58829598903656,
+        5.926498956680299
+      ],
+      "n_train_frames": 16423,
+      "n_train_kept": 16397,
+      "train_list": "working_train",
+      "stride": 4,
+      "q_cyl_statistics": {
+        "q_cyl": {
+          "n": 1289467,
+          "q01": 1.58829598903656,
+          "q10": 1.7803532838821412,
+          "q50": 2.672300338745117,
+          "q99": 5.926498956680299
+        },
+        "ts_beta_p": {
+          "n": 1270471,
+          "q50": 0.10883171856403351,
+          "q75": 0.18008416146039963
+        }
+      },
+      "shapes": "hybrid_ridge (shapes_hybrid2d3a250c8f13_train_2d3a250c8f13_s4.parquet)",
+      "n_train_without_boundary": 0,
+      "stage2_refit": {
+        "n_train_frames": 16423,
+        "n_train_kept": 16397,
+        "n_train_without_boundary": 0,
+        "constant_before": 3.7092723769582645,
+        "constant_after": 3.5900992344588767,
+        "checkpoints": {
+          "20261015T033844_e82e8704_s0": {
+            "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/runs/20261015T033844_e82e8704_s0/best.pt",
+            "sha256": "7a0994430638e00442ef867f38cc5f7672c432898d145df95fc7ecfcf0816e90",
+            "epoch": 116
+          }
+        },
+        "mirror_average": true,
+        "seed_average": false
+      }
+    },
+    "z10": {
+      "validation_list": "working_validation",
+      "stride": 4,
+      "corner_thresholds": {
+        "q_cyl": 1.7803532838821412,
+        "ts_beta_p": 0.10883171856403351,
+        "ts_beta_p_relaxed": 0.18008416146039963
+      },
+      "corner_relaxed": false,
+      "after": {
+        "r2_all": 0.8983652433207301,
+        "n_all": 5551,
+        "r2_corner": 0.8702784503713289,
+        "n_corner": 302
+      },
+      "before": {
+        "r2_all": 0.8328679845906253,
+        "n_all": 5551,
+        "r2_corner": 0.877527897168606,
+        "n_corner": 302
+      },
+      "before_note": null
+    },
+    "seconds": 17.874123096466064
+  },
+  "predictor_identifiers": {
+    "runs": [
+      "20261015T033844_e82e8704_s0"
+    ],
+    "checkpoints": {
+      "20261015T033844_e82e8704_s0": {
+        "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/runs/20261015T033844_e82e8704_s0/best.pt",
+        "sha256": "7a0994430638e00442ef867f38cc5f7672c432898d145df95fc7ecfcf0816e90",
+        "epoch": 116
+      }
+    },
+    "config_hash": "e82e87047d403d8ffb6cb06250faa03ae36088381bd8fdb09d1f39825319dafa",
+    "which": "best",
+    "mirror_average": true,
+    "seed_average": false,
+    "device": "cpu",
+    "feature_version": 2,
+    "columns": [
+      "coil_pt_00",
+      "coil_pt_01",
+      "coil_pt_02",
+      "coil_pt_03",
+      "coil_pt_04",
+      "coil_pt_05",
+      "coil_pt_06",
+      "coil_pt_07",
+      "coil_pt_08",
+      "coil_pt_09",
+      "coil_pt_10",
+      "coil_pt_11",
+      "coil_pt_12",
+      "coil_pt_13",
+      "coil_pt_14",
+      "coil_pt_15",
+      "coil_pt_16",
+      "coil_pt_17",
+      "coil_pt_18",
+      "coil_pt_19",
+      "coil_pt_20",
+      "coil_pt_21",
+      "ts_beta_p",
+      "ts_pe_peaking",
+      "ts_valid",
+      "q_cyl",
+      "ip_frac",
+      "ip_rate_rel",
+      "resistive_age"
+    ],
+    "scaler_sha256": "a9c7ca1ba2012c91f1e55460601250bc28151ebb0f79d3d490f8f59d08fbc3e7",
+    "target_build": {
+      "version": 1,
+      "config_hash": "b2192c3a01a9503b1a024e43fd60827aa2f17e9bf46087b00d84c295f4aae5de",
+      "checksums": {
+        "current_basis.npz": "2724d7063045ab1fbea9c9dc96be613609dafecaf571c80b6ff0881848d60382",
+        "remainder_model.npz": "59b07159e554ff290a5ef208a03fdc2461e651ba95c233dc7e1dba19bdc9ef61",
+        "flux_basis_d3d.npz": "167e45f29f949e853b04bc08e4be841e815e0e5fde58e7ec7ccb055eab752c68",
+        "flux_basis_mast.npz": "e4b23039c52ef51ee2efcd344103743b59d307ea36c9206714ab168d94d9d627",
+        "placement_d3d.npz": "17136239fea85dd59d7bc3064e3e9e50a07d9f8d50e57b244edd64334447e06b",
+        "placement_mast.npz": "9b713b3779ab4a81075d5ad2bca28dcecbddd6e1530e9da04abdc674457ea66f"
+      }
+    },
+    "sign_rule_c": {
+      "DIII-D": -1.0,
+      "MAST": 1.0
+    },
+    "coil_scales": {
+      "DIII-D": {
+        "machine": "DIII-D",
+        "scales": {
+          "magnetics_ECOILA": 0.0,
+          "magnetics_F1A": 1.0,
+          "magnetics_F1B": 1.0,
+          "magnetics_F2A": 1.0,
+          "magnetics_F2B": 1.0,
+          "magnetics_F3A": 1.0,
+          "magnetics_F3B": 1.0,
+          "magnetics_F4A": 1.0,
+          "magnetics_F4B": 1.0,
+          "magnetics_F5A": 1.0,
+          "magnetics_F5B": 1.0,
+          "magnetics_F6A": 1.0,
+          "magnetics_F6B": 1.0,
+          "magnetics_F7A": 1.0,
+          "magnetics_F7B": 1.0,
+          "magnetics_F8A": 1.0,
+          "magnetics_F8B": 1.0,
+          "magnetics_F9A": 1.0,
+          "magnetics_F9B": 1.0
+        },
+        "flat_wb_per_ka": 0.00896612986658692,
+        "source": "solenoid_flat, fit of 2026-10-10T18:45:26+00:00"
+      },
+      "MAST": {
+        "machine": "MAST",
+        "scales": {
+          "magnetics_p2l_current": 1.0,
+          "magnetics_p2u_current": 1.0,
+          "magnetics_p3l_current": 1.0,
+          "magnetics_p3u_current": 1.0,
+          "magnetics_p4l_current": 1.0,
+          "magnetics_p4u_current": 1.0,
+          "magnetics_p5l_current": 1.0,
+          "magnetics_p5u_current": 1.0,
+          "magnetics_p6l_current": 1.0,
+          "magnetics_p6u_current": 1.0,
+          "magnetics_sol_current": 1.0
+        },
+        "flat_wb_per_ka": 0.0,
+        "source": "default"
+      }
+    },
+    "machine_constants": {
+      "DIII-D": {
+        "major_radius": {
+          "value": 1.67,
+          "units": "m",
+          "source": "National Academies of Sciences, Engineering, and Medicine (2019), Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G",
+          "verified": true
+        },
+        "minor_radius": {
+          "value": 0.67,
+          "units": "m",
+          "source": "National Academies of Sciences, Engineering, and Medicine (2019), Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G",
+          "verified": true
+        },
+        "tf_turns": {
+          "value": 144.0,
+          "units": "turns",
+          "source": "Confirmed from the data: q95 calculated from the map against the label, median ratio 0.997 (F74)",
+          "verified": true
+        }
+      },
+      "MAST": {
+        "major_radius": {
+          "value": 0.85,
+          "units": "m",
+          "source": "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1",
+          "verified": true
+        },
+        "minor_radius": {
+          "value": 0.65,
+          "units": "m",
+          "source": "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1",
+          "verified": true
+        },
+        "tf_turns": {
+          "value": 24.0,
+          "units": "turns",
+          "source": "Morris (1998), Europhysics News 29(6) 233: 24 centre-column conductors; consistent with the 2.1 MA rod current of Sykes et al. (2001) and the -86 kA per conductor of Berkery et al. (2021)",
+          "verified": true
+        }
+      }
+    },
+    "q95": {
+      "method": "q95_from_map",
+      "tf_turns": {
+        "DIII-D": 144,
+        "MAST": 24
+      }
+    },
+    "source": "tables",
+    "heads": {
+      "heads": {
+        "DIII-D": "ridge_raw",
+        "MAST": "formula_gbm"
+      },
+      "d3d_n_train": 16397,
+      "d3d_alpha": 1.0,
+      "mast_fitted": true,
+      "mast_constant": 3.5900992344588767,
+      "mast_n_train": 16397,
+      "mast_features": [
+        "ts_pe_peaking",
+        "ts_valid",
+        "shafranov_lambda",
+        "greenwald_frac",
+        "ip_frac",
+        "ohmic_flux_used",
+        "shaping",
+        "q_cyl_clipped",
+        "kappa",
+        "a_over_a0"
+      ],
+      "gbm": {
+        "max_iter": 200,
+        "max_depth": 3,
+        "learning_rate": 0.1,
+        "seed": 0
+      },
+      "q_cyl_band": [
+        1.58829598903656,
+        5.926498956680299
+      ],
+      "n_train_frames": 16423,
+      "n_train_kept": 16397,
+      "train_list": "working_train",
+      "stride": 4,
+      "q_cyl_statistics": {
+        "q_cyl": {
+          "n": 1289467,
+          "q01": 1.58829598903656,
+          "q10": 1.7803532838821412,
+          "q50": 2.672300338745117,
+          "q99": 5.926498956680299
+        },
+        "ts_beta_p": {
+          "n": 1270471,
+          "q50": 0.10883171856403351,
+          "q75": 0.18008416146039963
+        }
+      },
+      "shapes": "hybrid_ridge (shapes_hybrid2d3a250c8f13_train_2d3a250c8f13_s4.parquet)",
+      "n_train_without_boundary": 0,
+      "stage2_refit": {
+        "n_train_frames": 16423,
+        "n_train_kept": 16397,
+        "n_train_without_boundary": 0,
+        "constant_before": 3.7092723769582645,
+        "constant_after": 3.5900992344588767,
+        "checkpoints": {
+          "20261015T033844_e82e8704_s0": {
+            "path": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/runs/20261015T033844_e82e8704_s0/best.pt",
+            "sha256": "7a0994430638e00442ef867f38cc5f7672c432898d145df95fc7ecfcf0816e90",
+            "epoch": 116
+          }
+        },
+        "mirror_average": true,
+        "seed_average": false
+      }
+    },
+    "heads_file": null,
+    "mast_sign_asserted": true
+  },
+  "max_shots": 20,
+  "score_local": {
+    "scored_at": "2026-10-15T04:33:16+00:00",
+    "part": "working_validation",
+    "n_shots": 100,
+    "frame_stride": 4,
+    "file": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-14_smoke_arm_f/local_working_validation.npz",
+    "file_sha256": "5a6e50e159954244786e52765fbd343a8464dd076b4798e61f6cb10b07c8a8c3",
+    "fold": {
+      "machine": "DIII-D",
+      "n_shots": 100,
+      "n_frames": 22052,
+      "fallback_frames": {
+        "coil_mean_shape": 0,
+        "nearest_frame": 0,
+        "constant_map": 0,
+        "scalar_nearest_frame": 0,
+        "scalar_median": 0
+      },
+      "n_predictor_errors": 0,
+      "predictor_errors": [],
+      "first_shot": "0150a57d75",
+      "last_shot": "fea57d4168"
+    },
+    "terms": {
+      "S": 0.873806,
+      "r2_psi": 0.997116,
+      "r2_qb": 0.900678,
+      "one_minus_dlcfs": 0.936531,
+      "consistency": 0.483187,
+      "psi_sign": 1,
+      "n_shots": 100,
+      "r2_R_axis": 0.585245,
+      "r2_Z_axis": 0.626468,
+      "r2_kappa": 0.039421,
+      "r2_tri_top": 0.653751,
+      "r2_tri_bot": 0.660925,
+      "r2_volume": 0.216673,
+      "r2_li": 0.599824,
+      "r2_q95": 0.860543,
+      "r2_betaN": 0.940814
+    },
+    "seconds": 45.93293118476868
+  },
+  "build_seconds": 81.92237591743469
+}

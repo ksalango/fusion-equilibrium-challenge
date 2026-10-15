@@ -1,0 +1,8 @@
+# Arm F (docs/PIPELINE.md, Part 7, priority 1): the flux term alone.
+base: base.yaml
+
+loss:
+  terms:
+    flux: {enabled: true, weight: 1.0}
+    grad: {enabled: false}
+    band: {enabled: false}

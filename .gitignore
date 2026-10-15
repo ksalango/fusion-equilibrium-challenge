@@ -27,3 +27,4 @@ reports/frame_table_smoke/
 
 # Submission builds: npz files and the pointer zip, which holds a read token
 /submissions/
+reports/submissions/**/*.npz

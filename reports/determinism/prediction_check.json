@@ -1,0 +1,66 @@
+{
+  "checked_at": "2026-10-15T04:41:55+00:00",
+  "repo_commit": "9ad51f7dcdeb9007c022d6cf98aa2c94f3aa8a05",
+  "runs": [
+    "20261015T033844_e82e8704_s0"
+  ],
+  "heads": "submissions/2026-10-14_smoke_arm_f/betan_heads.pkl",
+  "heads_sha256": "73e4280db408310b631b2965743806a949782bd186c24084ae02f66a0329ac73",
+  "n_shots": 24,
+  "missing": [],
+  "left_out_local_test": [
+    "45027c603f"
+  ],
+  "files": {
+    "diii_d_train": {
+      "tables_1": {
+        "sha256": "15b232c0b4c0968a286d6d3d179f2cc48005511af7ee347065358d261a5368a4"
+      },
+      "tables_2": {
+        "sha256": "15b232c0b4c0968a286d6d3d179f2cc48005511af7ee347065358d261a5368a4"
+      },
+      "raw": {
+        "sha256": "15b232c0b4c0968a286d6d3d179f2cc48005511af7ee347065358d261a5368a4"
+      }
+    },
+    "mast_public_test": {
+      "tables_1": {
+        "sha256": "03fb92e63ea2992e45461cb0be21ae52ad9a79501de5564f3dfba55fa21a98ea"
+      },
+      "tables_2": {
+        "sha256": "03fb92e63ea2992e45461cb0be21ae52ad9a79501de5564f3dfba55fa21a98ea"
+      },
+      "raw": {
+        "sha256": "03fb92e63ea2992e45461cb0be21ae52ad9a79501de5564f3dfba55fa21a98ea"
+      }
+    }
+  },
+  "results": {
+    "diii_d_train": {
+      "repeat": {
+        "n_keys": 57,
+        "differing": [],
+        "identical": true
+      },
+      "raw_vs_tables": {
+        "n_keys": 57,
+        "differing": [],
+        "identical": true
+      }
+    },
+    "mast_public_test": {
+      "repeat": {
+        "n_keys": 15,
+        "differing": [],
+        "identical": true
+      },
+      "raw_vs_tables": {
+        "n_keys": 15,
+        "differing": [],
+        "identical": true
+      }
+    }
+  },
+  "pass": true,
+  "seconds": 39.34742188453674
+}

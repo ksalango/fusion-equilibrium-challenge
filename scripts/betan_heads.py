@@ -68,10 +68,14 @@ from typing import Callable, Iterable, Mapping
 import numpy as np
 import pandas as pd
 
-from fusion_eq import (baseline as bl, dataset, feature_checks as fc, features as fe, frame_table as ft,
-                       label_filter as lf, scalars as sc, split as sp, targets)
+from fusion_eq import baseline as bl, dataset, features as fe, frame_table as ft, label_filter as lf, scalars as sc, split as sp
+# The heads' building blocks live in the package, where the prediction chain uses them; the names
+# not used below stay importable from this module.
+from fusion_eq.scalar_heads import (BASE, CLIPPED_COLUMN, CLIPPED_NAME, FEATURE_COLUMNS, HEAD_FEATURES, LABEL,  # noqa: F401
+                                    PRESSURE_COLUMN, RawRidge, betan_base, clip_to_band, head_table, strided,
+                                    toroidal_field_at_r0, training_statistics)
 from fusion_eq.dataset import default_data_root, run_info
-from fusion_eq.machines import MachineConfig, machine_config
+from fusion_eq.machines import machine_config
 
 DEFAULT_SPLIT = dataset.REPO_ROOT / "splits" / "split_v1.json"
 DEFAULT_CONFIG = fe.DEFAULT_CONFIG.with_name("features_v2.yaml")
@@ -80,18 +84,9 @@ DEFAULT_OUT = dataset.REPO_ROOT / "reports" / "scalars"
 DEFAULT_GREEN_DIR = dataset.DEFAULT_PROCESSED_ROOT / "green"
 SPLIT_NAME = "diii_d_train"
 MACHINE = "DIII-D"
-LABEL = "efit_beta_n"
 OTHER_LABEL = "efit_q95"
-BASE = "betan_base"
-PRESSURE_COLUMN = sc.DEFAULT_PRESSURE_COLUMN
-# Feature-table columns of the transferable list; q_cyl enters clipped.
-FEATURE_COLUMNS = ("ts_pe_peaking", "ts_valid", "shafranov_lambda", "greenwald_frac", "ip_frac", "ohmic_flux_used",
-                   "shaping", "q_cyl")
-CLIPPED_COLUMN = "q_cyl"
-CLIPPED_NAME = "q_cyl_clipped"
 # Feature-table columns of the transfer proxy only (not model inputs).
 CORNER_COLUMNS = ("q_cyl", "ts_beta_p")
-HEAD_FEATURES = (*[CLIPPED_NAME if c == CLIPPED_COLUMN else c for c in FEATURE_COLUMNS], "kappa", "a_over_a0")
 # Frame-table columns read as inputs by the raw ridge or the base.
 FRAME_INPUTS = tuple(dict.fromkeys([*bl.input_columns(MACHINE), "tf__mean", "ip__mean", PRESSURE_COLUMN]))
 FRAME_COLUMNS = list(dict.fromkeys([*FRAME_INPUTS, "ip_over_peak", "ip_direction", OTHER_LABEL, LABEL]))
@@ -137,12 +132,6 @@ def guard_inputs(frame_inputs: Iterable[str], feature_inputs: Iterable[str], con
 
 
 # -------------------------------------------------------------------------------- frames
-def strided(frames: pd.DataFrame, stride: int) -> pd.DataFrame:
-    """Every ``stride``-th frame of each shot, in shot and frame order (the rule of the scalar study)."""
-    rows = frames.assign(shot=frames["shot"].astype(str)).sort_values(["shot", "frame"])
-    return rows.loc[rows.groupby("shot", sort=False).cumcount().to_numpy() % int(stride) == 0].reset_index(drop=True)
-
-
 def training_filter(frames: pd.DataFrame) -> tuple[np.ndarray, pd.DataFrame]:
     """The lighter label filter on training frames.
 
@@ -166,31 +155,6 @@ def validation_mask(frames: pd.DataFrame) -> np.ndarray:
 
 
 # ----------------------------------------------------------------------- band and corner
-def training_statistics(q_cyl, beta_p) -> dict:
-    """Percentiles of the DIII-D training frames used by the clip and the transfer proxy.
-
-    Returns:
-        ``{"q_cyl": {n, q01, q10, q50, q99}, "ts_beta_p": {n, q50, q75}}`` over the finite values;
-        q01 and q99 are the band of X8 (``feature_checks.reference_statistics``).
-    """
-    q = np.asarray(q_cyl, dtype=np.float64)
-    b = np.asarray(beta_p, dtype=np.float64)
-    sq, sb = fc.reference_statistics(q), fc.reference_statistics(b)
-    finite_q = q[np.isfinite(q)]
-    q10 = float(np.percentile(finite_q, 10.0)) if finite_q.size else np.nan
-    return {"q_cyl": {"n": sq["n"], "q01": sq["q01"], "q10": q10, "q50": sq["q50"], "q99": sq["q99"]},
-            "ts_beta_p": {"n": sb["n"], "q50": sb["q50"], "q75": sb["q75"]}}
-
-
-def clip_to_band(values, band: tuple[float, float]) -> np.ndarray:
-    """Values clipped to ``[band[0], band[1]]``; non-finite values stay NaN."""
-    v = np.asarray(values, dtype=np.float64)
-    lo, hi = float(band[0]), float(band[1])
-    if not lo <= hi:
-        raise ValueError(f"band lower edge {lo} above upper edge {hi}")
-    return np.where(np.isfinite(v), np.clip(v, lo, hi), np.nan)
-
-
 def corner_mask(q_cyl, beta_p, stats: Mapping, eligible, min_frames: int = MIN_CORNER_FRAMES) -> tuple[np.ndarray, dict]:
     """The MAST-like corner of DIII-D validation: ``q_cyl`` below the training 10th percentile
     and ``ts_beta_p`` below the training median, or below the 75th percentile when fewer than
@@ -212,52 +176,6 @@ def corner_mask(q_cyl, beta_p, stats: Mapping, eligible, min_frames: int = MIN_C
                         "ts_beta_p_percentile": 50, "n_frames": int(strict.sum())}
     return relaxed_mask, {**record, "relaxed": True, "ts_beta_p_below": stats["ts_beta_p"]["q75"],
                           "ts_beta_p_percentile": 75, "n_frames": int(relaxed_mask.sum())}
-
-
-# ---------------------------------------------------------------------------------- base
-def toroidal_field_at_r0(tf_ka, machine: str | MachineConfig = MACHINE) -> np.ndarray:
-    """Vacuum toroidal field in tesla at the machine's reference radius R0.
-
-    Raises:
-        KeyError: when the machine's toroidal-field turn count is not verified.
-    """
-    cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
-    return sc.toroidal_field(tf_ka, cfg.major_radius.value, sc.TF_TURNS[cfg.name])
-
-
-def betan_base(p_e_kpa, a_m, tf_ka, ip_ka, machine: str | MachineConfig = MACHINE) -> np.ndarray:
-    """The geometry-explicit base: ``100 (2 mu0 p_e / Bt0^2) a Bt0 / abs(Ip)``.
-
-    Args:
-        p_e_kpa: Core electron pressure summary in kPa.
-        a_m: Minor radius in metres.
-        tf_ka: Toroidal field coil current in kA (sign ignored).
-        ip_ka: Plasma current in kA (sign ignored).
-        machine: Machine name or configuration (R0 and the turn count).
-
-    Returns:
-        betaN in percent metre tesla per MA, NaN where an input is missing.
-    """
-    p_pa = np.asarray(p_e_kpa, dtype=np.float64) * sc.PA_PER_KPA
-    ip_ma = np.asarray(ip_ka, dtype=np.float64) * sc.MA_PER_KA
-    return sc.beta_n_formula(p_pa, a_m, toroidal_field_at_r0(tf_ka, machine), ip_ma)
-
-
-def head_table(frames: pd.DataFrame, shapes: pd.DataFrame, q_cyl_band: tuple[float, float],
-               machine: str | MachineConfig = MACHINE) -> pd.DataFrame:
-    """Frames joined with one stage's shapes, with the base and the head features added.
-
-    Added columns: ``a``, ``kappa`` and ``boundary_found`` from ``shapes`` (NaN and False for
-    a frame without a shape row), ``q_cyl_clipped``, ``a_over_a0`` and ``betan_base``.
-    """
-    cfg = machine if isinstance(machine, MachineConfig) else machine_config(machine)
-    part = shapes[["shot", "frame", "a", "kappa", "boundary_found"]].assign(shot=lambda t: t["shot"].astype(str))
-    out = frames.merge(part, on=["shot", "frame"], how="left", validate="one_to_one")
-    out["boundary_found"] = out["boundary_found"].eq(True).to_numpy()
-    out[CLIPPED_NAME] = clip_to_band(out[CLIPPED_COLUMN], q_cyl_band)
-    out["a_over_a0"] = out["a"].to_numpy(dtype=np.float64) / cfg.minor_radius.value
-    out[BASE] = betan_base(out[PRESSURE_COLUMN], out["a"], out["tf__mean"], out["ip__mean"], cfg)
-    return out
 
 
 # ---------------------------------------------------------------------------------- arms
@@ -302,34 +220,6 @@ class StandardRidge:
 
     def predict(self, table: pd.DataFrame) -> np.ndarray:
         return self._matrix(table, fit=False) @ self.weights + self.intercept
-
-
-@dataclass
-class RawRidge:
-    """Ridge on the raw inputs of ``hybrid_ridge`` with the currents in the physical frame
-    (``targets.signed_frames``), standardized by ``baseline.InputScaler`` as in F75."""
-
-    alpha: float = 1.0
-    machine: str = MACHINE
-    scaler: bl.InputScaler | None = None
-    weights: np.ndarray | None = None
-    intercept: float = 0.0
-    n_train: int = 0
-
-    def fit(self, table: pd.DataFrame, label, keep) -> "RawRidge":
-        signed = targets.signed_frames(table, self.machine)
-        keep = np.asarray(keep, dtype=bool)
-        self.scaler = bl.InputScaler.fit(signed.loc[keep], bl.input_columns(self.machine))
-        x, complete = self.scaler.transform(signed)
-        y = np.asarray(label, dtype=np.float64)
-        rows = keep & complete & np.isfinite(y)
-        w, b = bl.ridge_fit(x[rows], y[rows], self.alpha)
-        self.weights, self.intercept, self.n_train = w[:, 0], float(b[0]), int(rows.sum())
-        return self
-
-    def predict(self, table: pd.DataFrame) -> np.ndarray:
-        x, _ = self.scaler.transform(targets.signed_frames(table, self.machine))
-        return x @ self.weights + self.intercept
 
 
 @dataclass

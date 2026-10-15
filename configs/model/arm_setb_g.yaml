@@ -1,0 +1,7 @@
+# Part 7, priority 3: set_b (shafranov_lambda in place of coil_c10, shaping in place of
+# coil_c20 and coil_c02) under arm G's loss settings. The F/G winner is not known yet; this
+# file follows arm G as asked, and is re-based on arm_f.yaml if arm F wins.
+base: arm_g.yaml
+
+features:
+  set: set_b

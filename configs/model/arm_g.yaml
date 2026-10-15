@@ -1,0 +1,9 @@
+# Arm G (docs/PIPELINE.md, Part 7, priority 2): the flux term plus the gradient term and the
+# boundary-band term, weight 1 each.
+base: base.yaml
+
+loss:
+  terms:
+    flux: {enabled: true, weight: 1.0}
+    grad: {enabled: true, weight: 1.0}
+    band: {enabled: true, weight: 1.0}

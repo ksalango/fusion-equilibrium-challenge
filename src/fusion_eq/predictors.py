@@ -8,6 +8,10 @@ no flat term) on the scorer's grid, converted to the stored frame with the DIII-
 rule, ``-sign(Ip)`` times the physical flux, and q95 and betaN set to the DIII-D
 training medians as a placeholder.
 
+``rung1_v1`` and ``rung2_v1``: the rung-1 and rung-2 plasma models through the prediction chain of
+``fusion_eq.prediction`` (registered here by factories that import the chain, and torch, only when
+used).
+
 ``coil_only_v0``: the calculated coil flux alone on both machines. ``mean_current_v0``: the coil
 flux plus the flux of the mean current share of the target build, with the remainder ridge on
 DIII-D (``docs/TARGET.md``, Part 6).
@@ -286,3 +290,17 @@ class MeanCurrentV0(BaselineV0):
             q95 = np.full(len(frames), self.scalar_medians["q95"])
             beta_n = np.full(len(frames), self.scalar_medians["betaN"])
         return bl.Prediction(psirz=psi.astype(np.float32), q95=np.asarray(q95), betaN=np.asarray(beta_n))
+
+
+@submission.register("rung1_v1")
+def rung1_v1(**kwargs):
+    """``fusion_eq.prediction.Rung1V1`` with the given arguments."""
+    from fusion_eq.prediction import Rung1V1
+    return Rung1V1(**kwargs)
+
+
+@submission.register("rung2_v1")
+def rung2_v1(**kwargs):
+    """``fusion_eq.prediction.Rung2V1`` with the given arguments."""
+    from fusion_eq.prediction import Rung2V1
+    return Rung2V1(**kwargs)

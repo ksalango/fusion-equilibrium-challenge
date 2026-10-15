@@ -1,0 +1,7 @@
+# Arm G without the up-down mirror in training (loader.mirror false): the measure of what the
+# mirror augmentation adds. A pod-idle filler run, launched only when the pod has nothing else
+# to run; not part of the Part 7 matrix.
+base: arm_g.yaml
+
+loader:
+  mirror: false

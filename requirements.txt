@@ -1,6 +1,7 @@
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
 aiosignal==1.4.0
+alembic==1.20.0
 anyio==4.14.2
 appnope==1.0.0
 argon2-cffi==25.1.0
@@ -16,6 +17,7 @@ certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
+colorlog==6.12.0
 comm==0.2.3
 contourpy==1.3.3
 cycler==0.12.1
@@ -30,7 +32,7 @@ fonttools==4.63.0
 fqdn==1.5.1
 frozenlist==1.8.0
 fsspec==2026.6.0
--e git+ssh://git@github.com/ksalango/fusion-equilibrium-challenge.git@dbbcd35a9b3382e20f5fcdea6626d639f82832f5#egg=fusion_eq
+-e git+ssh://git@github.com/ksalango/fusion-equilibrium-challenge.git@9ad51f7dcdeb9007c022d6cf98aa2c94f3aa8a05#egg=fusion_eq
 h11==0.16.0
 hf-xet==1.6.0
 httpcore==1.0.9
@@ -67,10 +69,12 @@ jupyterlab_widgets==3.0.17
 kiwisolver==1.5.0
 lark==1.3.1
 lazy-loader==0.5
+Mako==1.4.3
 MarkupSafe==3.0.3
 matplotlib==3.11.1
 matplotlib-inline==0.2.2
 mistune==3.3.4
+mpmath==1.3.0
 multidict==6.9.0
 multiprocess==0.70.19
 narwhals==2.25.0
@@ -82,6 +86,7 @@ networkx==3.6.1
 notebook==7.6.2
 notebook_shim==0.2.4
 numpy==2.5.2
+optuna==5.0.0
 packaging==26.3
 pandas==3.0.5
 pandocfilters==1.5.1
@@ -116,13 +121,17 @@ scikit-image==0.26.0
 scikit-learn==1.9.0
 scipy==1.18.1
 Send2Trash==2.1.0
+setuptools==84.0.0
 six==1.17.0
 soupsieve==2.9.2
+SQLAlchemy==2.1.4
 stack-data==0.6.3
+sympy==1.14.0
 terminado==0.18.1
 threadpoolctl==3.6.0
 tifffile==2026.9.20
 tinycss2==1.5.1
+torch==2.14.1
 tornado==6.5.8
 tqdm==4.70.1
 traitlets==5.16.1

@@ -1,0 +1,138 @@
+# Model configuration, base (docs/PIPELINE.md, "Configuration"). Every arm file names its
+# parent under `base:` and overrides fields; a field an arm sets must exist in this file, so
+# a misspelt field fails the load. Machine constants are not in this file; they are read from
+# src/fusion_eq/machines.py and written to every run record.
+
+version: 1
+
+features:
+  # Feature build version and set (configs/features_v2.yaml).
+  version: 2
+  set: set_a
+  # Feature groups left out of the set (the D8 ablation leaves out shot_position).
+  drop_groups: []
+
+loader:
+  # Up-down mirror of each sampled training frame with probability 0.5 (mirror_features,
+  # mirror_coeffs, masks flipped in Z).
+  mirror: true
+  # Share of sampled training frames whose Thomson features are set to their scaled missing
+  # value, with ts_valid 0.
+  thomson_mask_rate: 0.03
+  # Scaled features are clipped to [-clip_bound, clip_bound].
+  clip_bound: 10.0
+  # Frames without a scorer boundary in the true map have an empty inside mask, so every
+  # map term is undefined on them; they are left out of training and validation losses.
+  require_boundary: true
+  # Optional sample weights on the DIII-D training tail (P12): frames above the training
+  # quantile of any tail column get the tail weight. Thresholds from DIII-D training only.
+  tail_weights: false
+  tail_columns: [shaping, ts_beta_p]
+  tail_quantile: 0.9
+  tail_weight: 2.0
+
+loss:
+  # basis: Ip (phi_mean + Phi c_true); exact: Ip G s from build_loss_inputs.py --reference exact.
+  reference: basis
+  # Half-width of the band around the true boundary, in grid cells, on both sides.
+  band_cells: 2
+  # Frame weight (abs(Ip) / Ip_med) ** (frame_gamma - 2) times the phase multiplier;
+  # 2 and [1, 1, 1] are neutral (the flux-unit loss keeps its natural Ip-squared weight).
+  frame_gamma: 2.0
+  # Multipliers for the phases rising, flat_top, late (coil_scales.phase_of).
+  phase_weights: [1.0, 1.0, 1.0]
+  # Fixed sample of filter-passing training frames on which each term's value for the
+  # mean-current prediction (c_hat = 0) is computed, as its normalization constant.
+  norm_frames: 10000
+  norm_seed: 0
+  terms:
+    flux: {enabled: true, weight: 1.0}
+    grad: {enabled: false, weight: 1.0}
+    band: {enabled: false, weight: 1.0}
+    # Registered, off. Not implemented in version 1; enabling them fails the run.
+    contour: {enabled: false, weight: 1.0, stride: 1}
+    li_term: {enabled: false, weight: 1.0, stride: 1}
+    # Registered, off (the F96 handles). Components are indices into c; weights per component.
+    coeff: {enabled: false, weight: 1.0, components: [], component_weights: []}
+
+model:
+  name: linear_mlp
+  hidden: [512, 512, 512]
+  activation: gelu
+  dropout: 0.1
+  # Ridge from the scaled features to the standardized c on the original training frames,
+  # loaded into the linear path before training (P2).
+  warm_start: true
+  warm_start_alpha: 1.0
+  # Bounded variant (item 4): bound * tanh(MLP / bound) in standardized units of c.
+  bounded: false
+  bound: 3.0
+
+rung2:
+  # Sequence model of rung 2 (gru_seq, or tcn_seq, the registered alternative). A configuration
+  # selects rung 2 by setting model.name to the same name; model.activation, model.bounded and
+  # model.bound apply to its head, model.warm_start and model.warm_start_alpha to its skip.
+  name: gru_seq
+  hidden: 256
+  layers: 2
+  # Causal: no output depends on a later frame. A bidirectional GRU (or a centred TCN) uses
+  # future frames and is disclosed in the run record (uses_future).
+  causal: true
+  bidirectional: false
+  dropout: 0.1
+  # Hidden layers of the head on the encoder state (zero-initialized output layer).
+  head_hidden: [256]
+  # tcn_seq: kernel size and number of blocks (dilations 1, 2, 4, ...).
+  tcn_kernel: 3
+  tcn_levels: 4
+  # Time-step input: ms to the previous frame over this scale, clipped to loader.clip_bound.
+  dt_scale_ms: 20.0
+  # Shots per padded batch.
+  batch_shots: 64
+
+train:
+  seed: 0
+  batch_frames: 16384
+  max_epochs: 200
+  patience: 15
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 5
+  grad_clip: 1.0
+
+scoring:
+  # The organizers' scorer on the composed validation maps, at the warm start and at the
+  # best checkpoint: every stride-th frame of every validation shot.
+  stride: 4
+  # q95 and betaN of the scored maps during training and model selection: the fixed scalar
+  # ridge of baseline_v0 (ridge_signed), so that the score moves with the map alone.
+  scalars: ridge_signed
+  # MAST-like corner slice (F99's proxy): q_cyl below the training quantile and ts_beta_p
+  # below the training quantile, relaxed when fewer than corner_min_frames qualify.
+  corner_q_cyl_quantile: 0.10
+  corner_beta_p_quantile: 0.50
+  corner_beta_p_relaxed: 0.75
+  corner_min_frames: 300
+
+predict:
+  mirror_average: true
+  seed_average: false
+
+scalars:
+  q95: map
+  betan_d3d: ridge_raw
+  betan_mast: formula_gbm
+  stage2_refit: true
+
+optuna:
+  seed: 0
+  # Epoch bound of each trial (early stopping still applies inside it).
+  max_epochs: 60
+  # Search space. Keys are configuration paths; model.depth and model.width set
+  # model.hidden to depth layers of width units.
+  space:
+    train.lr: {type: log_float, low: 1.0e-4, high: 3.0e-3}
+    train.weight_decay: {type: log_float, low: 1.0e-6, high: 1.0e-2}
+    model.dropout: {type: float, low: 0.0, high: 0.3}
+    model.depth: {type: int, low: 2, high: 4}
+    model.width: {type: categorical, choices: [256, 512, 1024]}
