@@ -19,7 +19,7 @@ Target build `../data/processed/targets/v1` (configuration hash `b2192c3a01a9`, 
 | Y13 | Remainder components | review | variance held: 5 0.9976 (F79 0.9978), 10 0.9998 (F79 0.9998), 20 1.0000 (F79 1.0) |
 | Y14 | Remainder ridge | review | 10ms: training 0.8831, validation 0.8862; 50ms: training 0.9041, validation 0.9057 (F79: 0.8885, 0.8842); default window 50ms; the 50 ms ridge keeps the toroidal field's 10 ms rate |
 | Y15 | Ceiling variants h to k | review | S: f_remainder_pca_5 0.9978, f_remainder_pca_10 0.9982, f_remainder_pca_20 0.9983, g_remainder_ridge_10 0.9973, h_symmetric_50 0.9981, h_symmetric_60 0.9982, h_symmetric_80 0.9986, i_placed_mast_50 0.9979, j_rescaled_50 0.9971, k_ridge_10ms_50 0.9971, k_ridge_50ms_50 0.9972 (F79: f 0.9982, g 0.9973) |
-| Y16 | Mean current | review | validation with remainder S 0.7924, R2 psi 0.9913; validation without remainder S 0.7911, R2 psi 0.9903; DIII-D test (2000 frames): boundary on 1.000, median R_axis 1.737 m, Z_axis +0.003 m, kappa 1.778; MAST test (2000 frames): boundary on 1.000, median R_axis 0.968 m, Z_axis +0.000 m, kappa 1.873 |
+| Y16 | Mean current | review | validation with remainder S 0.7924, R2 psi 0.9913; validation without remainder S 0.7911, R2 psi 0.9903; DIII-D test (2000 frames): boundary on 1.000, median R_axis 1.737 m, Z_axis +0.003 m, kappa 1.778, boundary inner R 1.091 m, outer R 2.266 m, width 1.184 m, height 2.107 m; MAST test (2000 frames): boundary on 1.000, median R_axis 0.968 m, Z_axis +0.000 m, kappa 1.873, boundary inner R 0.338 m, outer R 1.465 m, width 1.125 m, height 2.102 m |
 
 ## Y10 and Y11. Where the current lands on MAST
 
@@ -64,4 +64,13 @@ Symmetry is ruled between source cells outside the first 3 interior rings; the v
 | validation_with_remainder | 0.7924 | 0.9913 | 0.8183 | 0.9161 | 0.1642 | -0.7432 | -0.4383 | -0.3845 | 0.6094 | 0.5400 | -0.0008 | -0.1965 |
 | validation_without_remainder | 0.7911 | 0.9903 | 0.8183 | 0.9151 | 0.1608 | -0.7622 | -0.4461 | -0.3065 | 0.5990 | 0.5269 | -0.1708 | -0.1324 |
 
-Runtime 317 s.
+## Y16. Mean current on the test frames
+
+Inputs only. Over the frames on which the scorer finds a closed boundary in the composed map: the derived R_axis, Z_axis and kappa and the boundary's inner and outer radius, width and height, as median (5th to 95th percentile).
+
+| Machine | Frames | Boundary found | R_axis (m) | Z_axis (m) | kappa | Inner R (m) | Outer R (m) | Width (m) | Height (m) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DIII-D | 2000 | 1.000 | 1.737 (1.704 to 1.757) | 0.003 (-0.003 to 0.008) | 1.778 (1.650 to 1.921) | 1.091 (0.994 to 1.160) | 2.266 (2.185 to 2.346) | 1.184 (1.067 to 1.271) | 2.107 (1.863 to 2.256) |
+| MAST | 2000 | 1.000 | 0.968 (0.944 to 0.989) | 0.000 (-0.001 to 0.003) | 1.873 (1.607 to 1.997) | 0.338 (0.153 to 0.480) | 1.465 (1.384 to 1.595) | 1.125 (0.936 to 1.389) | 2.102 (1.815 to 2.425) |
+
+Runtime 328 s.
