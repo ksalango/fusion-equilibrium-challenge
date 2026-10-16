@@ -373,7 +373,8 @@ def test_version_2_changes_only_shaping_ip_frac_scaling_and_set_b():
     assert CONFIG_V2.sets["set_a"] == CONFIG.sets["set_a"]
     assert CONFIG_V2.sets["set_b"] == ("shafranov_lambda", "coil_c01", "shaping", "coil_c11", "coil_c30", "coil_c21",
                                        "coil_c12", "coil_c03", *CONFIG.sets["set_b"][9:])
-    assert len(CONFIG_V2.set_columns("set_b")) == 15 and set(CONFIG_V2.sets) == set(CONFIG.sets)
+    # Version 2 adds exactly the comparison sets of 16 October 2026 (test below).
+    assert len(CONFIG_V2.set_columns("set_b")) == 15 and set(CONFIG_V2.sets) == set(CONFIG.sets) | {"set_c", "set_b10"}
     # set_b without coil_terms leaves out the whole coil description: the seven plasma, field and position features.
     groups = {n: v2[n].group for n in CONFIG_V2.sets["set_b"]}
     assert [n for n, g in groups.items() if g != "coil_terms"] == list(CONFIG.sets["set_b"][9:])
@@ -441,3 +442,69 @@ def test_shaping_is_even_under_the_mirror_and_equals_the_shaping_of_the_flipped_
     assert np.allclose(flipped["shaping"], out["shaping"], rtol=0, atol=1e-10 * scale)
     # The flip changes the odd terms, so the agreement of shaping is not trivial.
     assert np.abs(flipped["coil_c01"] + out["coil_c01"]).max() < 1e-10 * scale < np.abs(out["coil_c01"]).max()
+
+
+# ------------------------------------------------------------- comparison sets of 16 October
+def test_set_c_is_set_a_plus_shaping_after_the_points():
+    a, c = CONFIG_V2.set_columns("set_a"), CONFIG_V2.set_columns("set_c")
+    points = [f"coil_pt_{i:02d}" for i in range(22)]
+    assert len(c) == 30 and c == [*points, "shaping", *a[22:]]
+    assert a[:22] == points and len(a) == 29
+
+
+def test_set_b10_is_set_b_with_coil_c10_in_place_of_shafranov_lambda():
+    b, b10 = CONFIG_V2.set_columns("set_b"), CONFIG_V2.set_columns("set_b10")
+    assert len(b10) == 15 and b10 == ["coil_c10", *b[1:]] and b[0] == "shafranov_lambda"
+    assert "shafranov_lambda" not in b10
+
+
+def test_comparison_set_columns_are_built_scaled_and_mirror_declared():
+    specs = CONFIG_V2.column_specs()
+    built = set(CONFIG_V2.all_columns())
+    for name in ("set_c", "set_b10"):
+        assert set(CONFIG_V2.set_columns(name)) <= built
+    # Both added columns are even under the up-down mirror (a vertical field and the difference of
+    # two even curvatures) and scaled with DIII-D training statistics.
+    for column in ("shaping", "coil_c10"):
+        assert (specs[column].mirror, specs[column].scale, specs[column].scale_with) == ("even", "robust", "source")
+    mirrors = {c: specs[c].mirror for c in CONFIG_V2.set_columns("set_b10")}
+    assert [c for c, m in mirrors.items() if m == "odd"] == ["coil_c01", "coil_c11", "coil_c21", "coil_c03"]
+    assert {specs[c].mirror for c in CONFIG_V2.set_columns("set_c")} == {"permute", "even"}
+
+
+def test_mirror_of_the_comparison_sets_follows_the_declared_rules():
+    frame = pd.DataFrame({c: [float(k + 1)] for k, c in enumerate(CONFIG_V2.all_columns())})
+    mirrored = fe.mirror_features(frame, CONFIG_V2)
+    for c in CONFIG_V2.set_columns("set_b10"):
+        sign = -1.0 if CONFIG_V2.column_specs()[c].mirror == "odd" else 1.0
+        assert mirrored[c].iloc[0] == sign * frame[c].iloc[0]
+    assert mirrored["shaping"].iloc[0] == frame["shaping"].iloc[0]
+    partner = CONFIG_V2.layout.mirror_index()
+    points = [f"coil_pt_{i:02d}" for i in range(22)]
+    assert mirrored[points].to_numpy()[0].tolist() == frame[points].to_numpy()[0][partner].tolist()
+    assert sorted(partner.tolist()) == list(range(22)) and partner.tolist() != list(range(22))
+
+
+def test_the_stored_scaler_covers_the_comparison_sets():
+    import json
+
+    path = fe.scaler_path(2)
+    if not path.is_file():
+        pytest.skip(f"{path} not found")
+    stored = json.loads(path.read_text())
+    for name in ("set_c", "set_b10"):
+        missing = [c for c in CONFIG_V2.set_columns(name) if c not in stored["columns"]]
+        assert not missing, (name, missing)
+
+
+def test_sets_are_not_build_inputs():
+    recorded = CONFIG_V2.to_dict()
+    recorded["sets"] = {k: v for k, v in recorded["sets"].items() if k in ("set_a", "set_b")}
+    assert fe.same_build_inputs(CONFIG_V2, recorded)
+    other = CONFIG_V2.to_dict()
+    other["min_abs_ip_ka"] = 25.0
+    assert not fe.same_build_inputs(CONFIG_V2, other)
+    other = CONFIG_V2.to_dict()
+    other["features"] = [f for f in other["features"] if f["name"] != "greenwald_frac"]
+    assert not fe.same_build_inputs(CONFIG_V2, other)
+    assert not fe.same_build_inputs(CONFIG_V2, None)

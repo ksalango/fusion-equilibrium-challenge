@@ -1,0 +1,19 @@
+{
+ "flat_wb_per_ka": 0.0,
+ "machine": "MAST",
+ "name": "sol_half",
+ "scales": {
+  "magnetics_p2l_current": 1.0,
+  "magnetics_p2u_current": 1.0,
+  "magnetics_p3l_current": 1.0,
+  "magnetics_p3u_current": 1.0,
+  "magnetics_p4l_current": 1.0,
+  "magnetics_p4u_current": 1.0,
+  "magnetics_p5l_current": 1.0,
+  "magnetics_p5u_current": 1.0,
+  "magnetics_p6l_current": 1.0,
+  "magnetics_p6u_current": 1.0,
+  "magnetics_sol_current": 0.5
+ },
+ "source": "sol_half: each of the 656 solenoid elements carries half of magnetics_sol_current (the feed current), the solenoid being wound two-in-hand (two parallel conductors per turn, 328 turns; the MAST Upgrade solenoid is documented as 324 turns two-in-hand in four layers); Berkery et al. (2021) give a solenoid current of +22 to -17 kA against a dataset feed current of about +-46 kA; the flux-swing and flux-consumption checks are in reports/coil_flux/mast_solenoid_check.md (2026-10-15). P-coils as stored, no flat term. Set from the hardware, not fitted."
+}

@@ -35,7 +35,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from fusion_eq import baseline as bl, current_target as ct, dataset, frame_table as ft, loss_inputs as li, target_build as tb, targets
-from fusion_eq.coil_flux import GreenTable
+from fusion_eq.coil_flux import DEFAULT_COIL_MODELS, GreenTable
 from fusion_eq.dataset import default_data_root, run_info
 from fusion_eq.model_config import DEFAULT_BASE, ModelConfig
 
@@ -172,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         previous = {}
     all_lists = {**previous.get("lists", {}), **records}
     record = run_info(argv, vars(args), timestamp, time.time() - started, target_version=args.target_version,
+                      coil_models={tb.MACHINE: DEFAULT_COIL_MODELS[tb.MACHINE]},
                       band_cells=args.band_cells, reference=reference, grid_r=green.grid_r.tolist(), grid_z=green.grid_z.tolist(),
                       grid_hash=green.grid_hash, lists=all_lists, exact_lists=sorted(
                           set(previous.get("exact_lists", [])) - set(records) | (set(records) if exact else set())),

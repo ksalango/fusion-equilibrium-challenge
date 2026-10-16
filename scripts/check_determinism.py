@@ -9,7 +9,9 @@ the processed-data root:
    ``build.json``.
 2. Features, version 2 (``configs/features_v2.yaml``): ``build_split`` of
    ``scripts/build_features.py`` on the rebuilt frame rows, with the machine resources of the
-   full build (point tables from the cache in the green directory).
+   full build (point tables from the cache in the green directory) and the coil model its
+   ``build.json`` records for each machine. ``--feature-variant NAME`` checks the variant build
+   ``v<version>_<NAME>`` instead, on the splits it holds.
 3. Target tables, when a target build exists: for every list table of the build that holds some
    of the DIII-D shots, ``build_table`` and ``write_table`` of ``scripts/build_targets.py`` on the
    rebuilt frame rows, with the stored fitted objects, the build's stride and split, and the
@@ -147,26 +149,39 @@ def check_frame_table(args, work: Path, scripts: dict, workers: int) -> tuple[li
 # ------------------------------------------------------------------------------ features
 def check_features(args, work: Path, inputs_dir: Path, scripts: dict) -> tuple[list[dict], dict]:
     config = fe.FeatureConfig.load(args.feature_config)
-    stored_dir = fe.features_dir(config.version, args.feature_root)
-    name = f"features v{config.version}"
+    variant = args.feature_variant
+    stored_dir = fe.features_dir(config.version, args.feature_root, variant)
+    name = f"features {stored_dir.name}"
     if not (stored_dir / "build.json").is_file():
         return [skipped(name, s, f"no feature build at {stored_dir}") for s in SPLITS], {}
     record = json.loads((stored_dir / "build.json").read_text())
+    coil_models = {m: fe.build_coil_model(stored_dir, m) for m in SPLITS.values()}
     points = work / "points"
     linked = link_files(args.green_dir, "points_*.npz", points)
-    resources = {m: fe.load_resources(m, config, args.data_root, args.green_dir, cache_dir=points) for m in SPLITS.values()}
-    info = {"version": config.version, "config_hash": config.hash(), "config_hash_at_build": record.get("config_hash"),
-            "built_at_commit": record.get("repo_commit"), "point_tables": {m: "built in the work directory" if r.record["point_table"]["built"] else "from the cache"
+    resources = {m: fe.load_resources(m, config, args.data_root, args.green_dir, cache_dir=points, coil_model=coil_models[m])
+                 for m in SPLITS.values()}
+    info = {"version": config.version, "variant": variant, "config_hash": config.hash(),
+            "config_hash_at_build": record.get("config_hash"), "built_at_commit": record.get("repo_commit"),
+            "coil_models": {m: r.scales.name for m, r in resources.items()},
+            "point_tables": {m: "built in the work directory" if r.record["point_table"]["built"] else "from the cache"
                              for m, r in resources.items()}, "point_tables_linked": linked}
     ns = argparse.Namespace(table_dir=inputs_dir, out=work / "features", shots_per_chunk=500)
-    fe.features_dir(config.version, ns.out).mkdir(parents=True, exist_ok=True)
+    fe.features_dir(config.version, ns.out, variant).mkdir(parents=True, exist_ok=True)
     results = []
     for split, ids in (("diii_d_train", args.d3d_shots), ("mast_public_test", args.mast_shots)):
-        scripts["build_features"].build_split(split, config, resources[SPLITS[split]], ns, list(ids))
-        note = "" if info["config_hash"] == info["config_hash_at_build"] else "configuration changed since the build"
-        results.append(compare(name, split, fe.features_path(split, config.version, args.feature_root),
-                               fe.features_path(split, config.version, ns.out), ids, note))
-        log(f"{name}, {split}: {det.summary_line(results[-1])}")
+        stored = fe.features_path(split, config.version, args.feature_root, variant)
+        if not stored.is_file():
+            results.append(skipped(name, split, f"{stored.name} not in {stored_dir}"))
+            continue
+        scripts["build_features"].build_split(split, config, resources[SPLITS[split]], ns, list(ids), variant=variant)
+        if info["config_hash"] == info["config_hash_at_build"]:
+            note = ""
+        elif fe.same_build_inputs(config, record.get("config")):
+            note = "configuration changed since the build in its sets only (build inputs unchanged)"
+        else:
+            note = "configuration changed since the build"
+        results.append(compare(name, split, stored, fe.features_path(split, config.version, ns.out, variant), ids, note))
+        log(f"{name}, {split} (coil model {resources[SPLITS[split]].scales.name}): {det.summary_line(results[-1])}")
     return results, info
 
 
@@ -251,6 +266,8 @@ def render(results: list[dict], info: dict) -> str:
     features = info.get("features", {})
     if features:
         lines.append("- Point tables: " + ", ".join(f"{m} {v}" for m, v in features["point_tables"].items()))
+        lines.append(f"- Feature build {'v' + str(features['version']) + ('_' + features['variant'] if features.get('variant') else '')}"
+                     ", coil models from its build.json: " + ", ".join(f"{m} {v}" for m, v in features["coil_models"].items()))
     lines += ["", f"Runtime {info['runtime_s']:.0f} s.", ""]
     return "\n".join(lines)
 
@@ -265,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--table-dir", type=Path, default=ft.DEFAULT_TABLE_ROOT)
     parser.add_argument("--feature-root", type=Path, default=fe.DEFAULT_FEATURE_ROOT)
     parser.add_argument("--feature-config", type=Path, default=DEFAULT_FEATURE_CONFIG)
+    parser.add_argument("--feature-variant", default=None, help="check the variant feature build v<version>_<NAME> instead")
     parser.add_argument("--green-dir", type=Path, default=fe.DEFAULT_GREEN_DIR)
     parser.add_argument("--targets", type=Path, default=tb.DEFAULT_TARGET_ROOT)
     parser.add_argument("--target-config", type=Path, default=tb.DEFAULT_CONFIG)

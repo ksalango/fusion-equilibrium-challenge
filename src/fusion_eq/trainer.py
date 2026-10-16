@@ -39,6 +39,7 @@ import torch
 
 from fusion_eq import dataset, features as fe, frame_table as ft, loader as ld, loss as ls, loss_inputs as li, \
     plasma_models as pm, split as sp, starter_kit
+from fusion_eq.coil_flux import DEFAULT_COIL_MODELS
 from fusion_eq.feature_scaler import RobustScaler
 from fusion_eq.machines import machine_config
 from fusion_eq.model_config import ModelConfig
@@ -422,6 +423,8 @@ def train(config: ModelConfig, lists: Sequence[str] = LIST_PAIRS["full"], paths:
         "python": platform.python_version(), "torch": torch.__version__, "environment": environment_freeze(),
         "data_hashes": data_hashes(config, paths, table_dir),
         "machine_constants": {"DIII-D": machine_config("DIII-D").constants_record()},
+        # Targets, loss inputs and validation scoring compose DIII-D maps under the default model.
+        "coil_models": {"DIII-D": DEFAULT_COIL_MODELS["DIII-D"]},
         "n_frames": {"train": len(train_frames), "validation": len(val_frames), "validation_no_near_repeat": int(nnr.sum())},
         "model": {"name": config.get("model.name"), "rung": 2 if sequence else 1, "sequence": sequence,
                   "uses_future": bool(getattr(model, "uses_future", False)), "init_args": dict(model.init_args),

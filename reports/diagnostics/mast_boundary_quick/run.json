@@ -1,0 +1,93 @@
+{
+ "timestamp": "2026-10-16T05:22:11+00:00",
+ "repo_commit": "64d128ebfbd029545619ea24f935ce16ac87af20",
+ "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+ "args": "--stride 8 --shots 40 --out reports/diagnostics/mast_boundary_quick",
+ "arguments": {
+  "arm_g": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-15_arm_g_solhalf",
+  "set_b": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-15_arm_setb_g_solhalf",
+  "records": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/submissions",
+  "runs_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/runs",
+  "features": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/features/v2_solhalf",
+  "table_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table",
+  "green": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/green/green_mast.npz",
+  "targets": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/targets/v1",
+  "config": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/diag_mast_boundary_v1.yaml",
+  "out": "reports/diagnostics/mast_boundary_quick",
+  "stride": 8,
+  "shots": "40",
+  "known_shots": null,
+  "no_figures": false,
+  "workers": 8
+ },
+ "runtime_s": 16.7,
+ "python": "3.13.15",
+ "numpy": "2.5.2",
+ "pandas": "3.0.5",
+ "n_shots": 40,
+ "n_frames": 302,
+ "inputs": {
+  "arm_g": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-15_arm_g_solhalf/mast_public_test.npz",
+  "set_b": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/submissions/2026-10-15_arm_setb_g_solhalf/mast_public_test.npz"
+ },
+ "thresholds": {
+  "axis_sign": 1.0,
+  "robust_z_max": 3.5,
+  "a_band_m": [
+   0.35,
+   0.75
+  ],
+  "area_band_m2": [
+   0.5,
+   4.2
+  ],
+  "dpsi_sep_max": 0.02,
+  "xpoint_flux_tol": 0.02,
+  "xpoint_contour_max_m": 0.08,
+  "wall_tol_m": 0.03,
+  "centre_column_max_r_m": 0.3,
+  "grid_edge_m": 0.04,
+  "da_max_m": 0.05,
+  "dr0_max_m": 0.05,
+  "flag_fraction": 0.2,
+  "coil_active_ka": 5.0,
+  "source": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/diag_mast_boundary_v1.yaml",
+  "sha256": "7bfd7b0ba4c4843894ec65d3431bde5bc4302d2e818470c19fbfde907cca5c44"
+ },
+ "clip": {
+  "arm_g": {
+   "run": "arm_g_s0",
+   "bound": 10.0,
+   "n_columns": 29
+  },
+  "set_b": {
+   "run": "arm_setb_g_s0",
+   "bound": 10.0,
+   "n_columns": 15
+  }
+ },
+ "control": {
+  "coil_model": "sol_half",
+  "targets": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/targets/v1"
+ },
+ "machine": {
+  "major_radius": {
+   "value": 0.85,
+   "units": "m",
+   "source": "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1",
+   "verified": true
+  },
+  "minor_radius": {
+   "value": 0.65,
+   "units": "m",
+   "source": "Sykes et al. (2001), Nucl. Fusion 41 1423, Table 1",
+   "verified": true
+  },
+  "tf_turns": {
+   "value": 24.0,
+   "units": "turns",
+   "source": "Morris (1998), Europhysics News 29(6) 233: 24 centre-column conductors; consistent with the 2.1 MA rod current of Sykes et al. (2001) and the -86 kA per conductor of Berkery et al. (2021)",
+   "verified": true
+  }
+ }
+}

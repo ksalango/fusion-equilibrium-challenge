@@ -144,6 +144,7 @@ class BaselineV0:
                                       "n_filaments": table.n_filaments},
                            "MAST": {"scales": self.scales_mast.to_dict(), "geometry_hash": self.table_mast.geometry_hash,
                                     "grid_hash": self.table_mast.grid_hash, "n_filaments": self.table_mast.n_filaments}},
+            "coil_models": {"DIII-D": scales.name, "MAST": self.scales_mast.name},
             "mast_sign_rule_c": targets.sign_rule_c("DIII-D"),
             "mast_scalars": "placeholder: DIII-D training medians",
         }
@@ -230,6 +231,8 @@ class MeanCurrentV0(BaselineV0):
             read from ``<targets_root>/v<version>``.
         target_config: Target configuration (``configs/target_v1.yaml``).
         with_remainder: Add the ridge remainder on DIII-D.
+        coil_models: Machine to a coil-model name (``coil_flux.COIL_MODELS``); each machine's
+            default otherwise. The submission of 14 October 2026 ran with MAST ``unit``.
         Other arguments as in ``BaselineV0``.
     """
 
@@ -239,8 +242,10 @@ class MeanCurrentV0(BaselineV0):
                  green_dir: Path | str = DEFAULT_GREEN_DIR, table_root: Path | str = ft.DEFAULT_TABLE_ROOT,
                  data_root: Path | str | None = None, params: bl.BaselineParams = bl.BaselineParams(),
                  build_params: ft.BuildParams = ft.BuildParams(), targets_root: Path | str | None = None,
-                 target_config: Path | str | None = None, with_remainder: bool = True) -> None:
+                 target_config: Path | str | None = None, with_remainder: bool = True,
+                 coil_models: dict[str, str] | None = None) -> None:
         super().__init__(split_path, cache_dir, green_dir, table_root, data_root, params, build_params)
+        self.coil_models = dict(coil_models or {})
         self.targets_root = Path(targets_root) if targets_root is not None else tb.DEFAULT_TARGET_ROOT
         self.target_config = Path(target_config) if target_config is not None else tb.DEFAULT_CONFIG
         self.with_remainder = with_remainder
@@ -260,7 +265,7 @@ class MeanCurrentV0(BaselineV0):
             raise ValueError(f"the target build in {folder} was made with another configuration than {self.target_config}")
         for machine in tb.MACHINES:
             self.tables[machine] = green_table(self.green_dir, machine)
-            self.scales[machine] = cf.adopted_scales(machine, self.tables[machine].columns)
+            self.scales[machine] = cf.adopted_scales(machine, self.tables[machine].columns, self.coil_models.get(machine))
         identifiers.pop("mast_scalars", None)
         identifiers.update({
             "target_build": {"version": config.version, "config_hash": record["config_hash"], "checksums": record.get("checksums", {}),
@@ -269,6 +274,7 @@ class MeanCurrentV0(BaselineV0):
             "flux_model": "coil flux plus Ip phi_mean" + (", ridge remainder on DIII-D" if self.with_remainder else ", no remainder"),
             "sign_rule_c": {m: targets.sign_rule_c(m) for m in tb.MACHINES},
             "coil_scales": {m: self.scales[m].to_dict() for m in tb.MACHINES},
+            "coil_models": {m: self.scales[m].name for m in tb.MACHINES},
             "scalars": {"DIII-D": "ridge_signed of baseline_v0", "MAST": "placeholder: DIII-D training medians"},
         })
         log(f"mean_current_v0 ready: target build v{config.version} ({record['config_hash'][:12]}), "

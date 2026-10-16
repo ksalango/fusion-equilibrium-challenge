@@ -47,7 +47,7 @@ import pyarrow.parquet as pq
 
 from fusion_eq import (baseline as bl, current_basis as cb, current_target as ct, dataset, frame_table as ft,
                        label_filter as lf, lattice as lt, split as sp, target_build as tb, target_checks as tc, targets)
-from fusion_eq.coil_flux import GreenTable
+from fusion_eq.coil_flux import DEFAULT_COIL_MODELS, GreenTable
 from fusion_eq.dataset import default_data_root, run_info
 from fusion_eq.machines import machine_config
 from fusion_eq.remainder_model import RemainderModel, available_windows, window_name
@@ -311,6 +311,7 @@ def main(argv: list[str] | None = None) -> int:
     cumulative = np.cumsum(current.explained_ratio)
     record = run_info(argv, vars(args), timestamp, time.time() - started, version=config.version, config=config.to_dict(),
                       config_hash=config.hash(), machine_constants={m: machine_config(m).constants_record() for m in tb.MACHINES},
+                      coil_models={tb.MACHINE: DEFAULT_COIL_MODELS[tb.MACHINE]},
                       lists=list_records, fit_list=fit_name, validation_list=val_name, stride=args.stride, sample=sample,
                       current_basis={"n_components": current.n_components, "even": int((current.parity > 0).sum()),
                                      "odd": int((current.parity < 0).sum()),

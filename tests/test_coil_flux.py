@@ -267,7 +267,91 @@ def test_adopted_scales_are_the_default_of_coil_flux():
     assert not np.allclose(cf.coil_flux(table, currents), table.flux(currents))
     with pytest.raises(KeyError):
         cf.adopted_scales("DIII-D", ["magnetics_F1A", "unknown"])
-    # MAST has no adopted file: the default record, which leaves the flux unchanged.
+    # MAST: the adopted model is sol_half (solenoid elements at half the feed current, P-coils
+    # as stored); the earlier model, unit, is the default record and leaves the flux unchanged.
     mast_columns = ["magnetics_p2l_current", "magnetics_sol_current"]
     mast = cf.adopted_scales("MAST", mast_columns)
-    assert mast == cf.CoilScales.default("MAST", mast_columns) and mast.flat_wb_per_ka == 0.0
+    assert mast.name == "sol_half" and mast.vector(mast_columns).tolist() == [1.0, 0.5] and mast.flat_wb_per_ka == 0.0
+    unit = cf.adopted_scales("MAST", mast_columns, "unit")
+    assert unit == cf.CoilScales.default("MAST", mast_columns) and unit.flat_wb_per_ka == 0.0
+
+
+# --------------------------------------------------------------------- named coil models
+MAST_GRID_R = np.linspace(0.06, 2.0, 33)
+MAST_GRID_Z = np.linspace(-2.0, 2.0, 33)
+
+
+def mast_geometry():
+    """Four single-turn solenoid elements and two P-coils (P4 lower and upper, two turns each)."""
+    names = np.array(["sol_0", "sol_1", "sol_2", "sol_3", "p4_l0", "p4_l1", "p4_u0", "p4_u1"])
+    columns = np.array(["magnetics_sol_current"] * 4 + ["magnetics_p4l_current"] * 2 + ["magnetics_p4u_current"] * 2)
+    r = np.array([0.12, 0.12, 0.14, 0.14, 1.45, 1.50, 1.45, 1.50])
+    z = np.array([-0.5, 0.5, -0.5, 0.5, -1.1, -1.1, 1.1, 1.1])
+    n = names.size
+    return cf.CoilGeometry(names, columns, r, z, np.full(n, 0.012), np.full(n, 0.02), np.zeros(n), np.zeros(n))
+
+
+def test_a_scaled_solenoid_element_gives_the_scaled_flux():
+    geometry = mast_geometry()
+    table = cf.build_green_table(MAST, geometry, MAST_GRID_R, MAST_GRID_Z, n_filaments=2)
+    columns = list(table.columns)
+    sol = columns.index("magnetics_sol_current")
+    currents = np.zeros((2, len(columns)))
+    currents[:, sol] = [40.0, -25.0]
+    currents[:, columns.index("magnetics_p4l_current")] = [-150.0, -90.0]
+    currents[:, columns.index("magnetics_p4u_current")] = [-140.0, -95.0]
+    half = cf.CoilScales("MAST", {c: (0.5 if c == "magnetics_sol_current" else 1.0) for c in columns}, name="test")
+    unit = cf.coil_flux(table, currents, None)
+    only_sol = np.zeros_like(currents)
+    only_sol[:, sol] = currents[:, sol]
+    sol_flux = cf.coil_flux(table, only_sol, None)
+    # Halving the element current halves the solenoid's flux and leaves the P-coils' as they are.
+    np.testing.assert_allclose(cf.coil_flux(table, currents, half), unit - 0.5 * sol_flux, rtol=1e-12, atol=1e-15)
+    # The same as summing the elements with half of the feed current each.
+    direct = cf.direct_coil_flux(MAST, geometry, {c: (0.5 if c == "magnetics_sol_current" else 1.0) * currents[0, j]
+                                                  for j, c in enumerate(columns)}, MAST_GRID_R, MAST_GRID_Z, n_filaments=2)
+    np.testing.assert_allclose(cf.coil_flux(table, currents[0], half), direct, rtol=1e-10, atol=1e-14)
+    # Linear in the scale: the solenoid part at scale s is s times the unit part.
+    for s in (0.25, 2.0):
+        scaled = replace(half, scales={**half.scales, "magnetics_sol_current": s})
+        np.testing.assert_allclose(cf.coil_flux(table, currents, scaled) - cf.coil_flux(table, currents - only_sol, None),
+                                   s * sol_flux, rtol=1e-12, atol=1e-15)
+
+
+def test_mast_coil_models_are_both_loadable_and_named():
+    columns = [*MAST.shaping_coil_columns, MAST.solenoid_column]
+    assert cf.coil_model_names("MAST") == ("sol_half", "unit") and cf.DEFAULT_COIL_MODELS["MAST"] == "sol_half"
+    half = cf.coil_model("MAST", columns, "sol_half")
+    assert half.name == "sol_half" and half.machine == "MAST" and half.flat_wb_per_ka == 0.0
+    assert half.scales[MAST.solenoid_column] == 0.5 and all(half.scales[c] == 1.0 for c in MAST.shaping_coil_columns)
+    assert set(half.scales) == set(columns) and "two-in-hand" in half.source
+    assert cf.coil_model("MAST", columns) == half == cf.adopted_scales("MAST", columns)
+    unit = cf.coil_model("MAST", columns, "unit")
+    assert unit == cf.CoilScales.default("MAST", columns) and unit.name == "unit" and unit.vector(columns).tolist() == [1.0] * 11
+    assert cf.coil_model("DIII-D", ["magnetics_F1A"]).name == "solenoid_flat"
+    with pytest.raises(KeyError):
+        cf.coil_model("MAST", columns, "solenoid_flat")
+    with pytest.raises(KeyError):
+        cf.coil_model("MAST", [*columns, "magnetics_unknown"], "sol_half")
+    # The name survives a save and a load.
+    assert cf.CoilScales.from_dict(half.to_dict()) == half and half.to_dict()["name"] == "sol_half"
+
+
+def test_coil_model_name_of_record_identifies_named_and_legacy_records():
+    columns = [*MAST.shaping_coil_columns, MAST.solenoid_column]
+    for name in ("sol_half", "unit"):
+        assert cf.coil_model_name_of_record("MAST", cf.coil_model("MAST", columns, name).to_dict()) == name
+    # A record written before the models were named (the version-2 feature build): content only.
+    legacy = {"machine": "MAST", "scales": {c: 1.0 for c in columns}, "flat_wb_per_ka": 0.0, "source": "default"}
+    assert cf.coil_model_name_of_record("MAST", legacy) == "unit"
+    legacy_half = {**legacy, "scales": {**legacy["scales"], MAST.solenoid_column: 0.5}, "source": "x"}
+    assert cf.coil_model_name_of_record("MAST", legacy_half) == "sol_half"
+    d3d = cf.coil_model("DIII-D", ["magnetics_F1A", "magnetics_ECOILA"]).to_dict()
+    assert cf.coil_model_name_of_record("DIII-D", {**d3d, "name": ""}) == "solenoid_flat"
+    # A name whose content differs, an unknown content and another machine are refused.
+    with pytest.raises(ValueError):
+        cf.coil_model_name_of_record("MAST", {**legacy, "name": "sol_half"})
+    with pytest.raises(ValueError):
+        cf.coil_model_name_of_record("MAST", {**legacy, "scales": {**legacy["scales"], MAST.solenoid_column: 0.7}})
+    with pytest.raises(ValueError):
+        cf.coil_model_name_of_record("DIII-D", legacy)

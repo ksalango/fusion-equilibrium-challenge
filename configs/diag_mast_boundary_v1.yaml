@@ -1,0 +1,47 @@
+# Thresholds of the MAST boundary diagnostic (fusion_eq/diagnostics/boundary.py).
+# Written on 15 October 2026 from physics, the scorer's geometry and the grid, before any
+# comparison with the Codabench worst-shot tables. The overlap step reads flags, never this file;
+# its SHA-256 is written to the report.
+version: 1
+
+# Flux orientation under which the boundary is extracted (scorer: AXIS_SIGN[MAST] times the
+# fold's global sign; +1 for maps in the stored MAST convention).
+axis_sign: 1.0
+
+size:                       # F1
+  # Robust z-score (median and 1.4826 MAD over all MAST frames of one map set) of a and of the
+  # boundary area beyond which a frame is flagged.
+  robust_z_max: 3.5
+  # Physical band of the minor radius (MAST a about 0.5 to 0.65 m, Sykes et al. 2001; widened
+  # for small early and late plasmas) and of the poloidal area (pi a^2 kappa over a 0.35 to
+  # 0.75 m and kappa 1.3 to 2.4).
+  a_band_m: [0.35, 0.75]
+  area_band_m2: [0.5, 4.2]
+
+topology:                   # F2
+  # Near-double-null: |psi_X2 - psi_X1| over |psi_axis - psi_boundary| below this.
+  dpsi_sep_max: 0.02
+  # A saddle defines the boundary when its flux is within this fraction of
+  # |psi_axis - psi_boundary| of the boundary flux and it lies within this distance of the
+  # boundary contour.
+  xpoint_flux_tol: 0.02
+  xpoint_contour_max_m: 0.08
+
+limiting:                   # F3
+  # The boundary is limited when it comes within this distance of the scorer's wall (the
+  # 0.5 isoline of the envelope mask, which the boundary must stay inside).
+  wall_tol_m: 0.03
+  # Wall points at or below this major radius form the centre column.
+  centre_column_max_r_m: 0.30
+  # The boundary touches the grid edge within this distance of the outermost nodes.
+  grid_edge_m: 0.04
+
+arms:                       # F4
+  da_max_m: 0.05
+  dr0_max_m: 0.05
+
+shots:
+  # A shot counts as flagged for a flag when at least this share of its frames carries it.
+  flag_fraction: 0.2
+  # A P-coil counts as active in a shot when its largest absolute current exceeds this, kA-turn.
+  coil_active_ka: 5.0

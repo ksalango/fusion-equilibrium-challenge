@@ -32,7 +32,7 @@ import pyarrow.parquet as pq
 import yaml
 
 from fusion_eq import coil_pattern as cp, dataset, frame_table as ft
-from fusion_eq.coil_flux import MU0, CoilScales, GreenTable, PointTable, adopted_scales
+from fusion_eq.coil_flux import MU0, CoilScales, GreenTable, PointTable, adopted_scales, coil_model_name_of_record
 from fusion_eq.machines import MachineConfig, machine_config
 
 A_PER_KA = 1000.0
@@ -200,6 +200,21 @@ class FeatureConfig:
         return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode()).hexdigest()
 
 
+# Configuration entries the model phase reads and the build does not.
+MODEL_ONLY_ENTRIES = ("sets",)
+
+
+def same_build_inputs(config: FeatureConfig, recorded: dict | None) -> bool:
+    """Whether a configuration agrees with a build record's stored configuration (``build.json``
+    ``config``) in every entry the build reads: everything but ``MODEL_ONLY_ENTRIES``. Adding a
+    set changes ``FeatureConfig.hash`` but not the stored tables. False when no configuration
+    was recorded."""
+    if not recorded:
+        return False
+    strip = lambda d: {k: v for k, v in d.items() if k not in MODEL_ONLY_ENTRIES}
+    return json.dumps(strip(config.to_dict()), sort_keys=True) == json.dumps(strip(recorded), sort_keys=True)
+
+
 # ----------------------------------------------------------------------------- registry
 @dataclass(frozen=True)
 class FeatureFunction:
@@ -294,15 +309,19 @@ class MachineResources:
 
 def load_resources(machine: str, config: FeatureConfig, data_root: Path | str = dataset.DEFAULT_DATA_ROOT,
                    green_dir: Path | str = DEFAULT_GREEN_DIR, cache_dir: Path | str | None = None,
-                   r0_m: float | None = None, a0_m: float | None = None, radii_source: str = "") -> MachineResources:
+                   r0_m: float | None = None, a0_m: float | None = None, radii_source: str = "",
+                   coil_model: str | None = None) -> MachineResources:
     """Point table (from the cache, or built from the geometry of one public test shot),
-    adopted coil model and constants of a machine.
+    coil model and constants of a machine.
 
     Args:
         r0_m, a0_m: Reference radii in metres used instead of the machine's constants, for
             diagnostics; the layout points move with them and the point table is cached
             under its own key. ``machines.py`` is not changed.
         radii_source: Where the override radii come from, written to the record.
+        coil_model: Registered coil-model name (``coil_flux.COIL_MODELS``); the machine's
+            default when None. The point table holds the patterns per kA and does not depend
+            on it.
     """
     cfg = machine_config(machine)
     r0 = cfg.major_radius.value if r0_m is None else float(r0_m)
@@ -310,8 +329,9 @@ def load_resources(machine: str, config: FeatureConfig, data_root: Path | str = 
     grid_table = GreenTable.load(Path(green_dir) / f"green_{cfg.file_prefix.split('_')[0]}.npz")
     table, table_record = cp.load_or_build_point_table(config.layout, cfg, grid_table, data_root,
                                                        green_dir if cache_dir is None else cache_dir, r0, a0)
-    scales = adopted_scales(machine, table.columns)
-    record = {"constants": cfg.constants_record(), "coil_model": scales.to_dict(), "point_table": table_record,
+    scales = adopted_scales(machine, table.columns, coil_model)
+    record = {"constants": cfg.constants_record(), "coil_model": scales.to_dict(), "coil_model_name": scales.name,
+              "point_table": table_record,
               "geometry_hash": table.geometry_hash, "points_hash": table.points_hash, "n_filaments": table.n_filaments}
     if r0_m is not None or a0_m is not None:
         record["radii_override"] = {"r0_m": r0, "a0_m": a0, "source": radii_source}
@@ -609,22 +629,48 @@ def mirror_features(features: pd.DataFrame, config: FeatureConfig) -> pd.DataFra
 
 
 # ---------------------------------------------------------------------------- reading
-def features_dir(version: int, root: Path | str = DEFAULT_FEATURE_ROOT) -> Path:
-    return Path(root) / f"v{version}"
+def features_dir(version: int, root: Path | str = DEFAULT_FEATURE_ROOT, variant: str | None = None) -> Path:
+    """Folder of a feature build: ``<root>/v<version>``, or ``<root>/v<version>_<variant>`` for a
+    variant build (the same configuration under another coil model, ``build_features.py
+    --variant``)."""
+    if variant is not None and (not variant or not variant.replace("_", "").isalnum()):
+        raise ValueError(f"variant {variant!r} must be letters, digits and underscores")
+    return Path(root) / (f"v{version}" if variant is None else f"v{version}_{variant}")
 
 
-def features_path(split: str, version: int, root: Path | str = DEFAULT_FEATURE_ROOT) -> Path:
-    """Unscaled features of one split: ``<root>/v<version>/<split>.parquet``."""
-    return features_dir(version, root) / f"{split}.parquet"
+def features_path(split: str, version: int, root: Path | str = DEFAULT_FEATURE_ROOT, variant: str | None = None) -> Path:
+    """Unscaled features of one split: ``<features_dir>/<split>.parquet``."""
+    return features_dir(version, root, variant) / f"{split}.parquet"
+
+
+def read_features_at(path: Path | str, columns: Iterable[str] | None = None, shots: Iterable[str] | None = None) -> pd.DataFrame:
+    """Rows of one feature table file (``shot``, ``frame`` and the columns), in file order."""
+    cols = None if columns is None else list(dict.fromkeys([*KEY_COLUMNS, *columns]))
+    filters = None if shots is None else [("shot", "in", sorted({str(s) for s in shots}))]
+    return pq.read_table(path, columns=cols, filters=filters).to_pandas()
 
 
 def read_features(split: str, version: int = 1, columns: Iterable[str] | None = None, shots: Iterable[str] | None = None,
-                  root: Path | str = DEFAULT_FEATURE_ROOT) -> pd.DataFrame:
+                  root: Path | str = DEFAULT_FEATURE_ROOT, variant: str | None = None) -> pd.DataFrame:
     """Rows of one split's feature table (``shot``, ``frame`` and the columns), in file
     order: shots sorted by id, frames in order."""
-    cols = None if columns is None else list(dict.fromkeys([*KEY_COLUMNS, *columns]))
-    filters = None if shots is None else [("shot", "in", sorted({str(s) for s in shots}))]
-    return pq.read_table(features_path(split, version, root), columns=cols, filters=filters).to_pandas()
+    return read_features_at(features_path(split, version, root, variant), columns, shots)
+
+
+def build_coil_model(directory: Path | str, machine: str) -> str | None:
+    """Coil-model name a feature build in ``directory`` used on a machine, from its
+    ``build.json``; None when the folder has no record or the record no entry for the machine.
+
+    Raises:
+        ValueError: when the recorded coil model matches no registered model.
+    """
+    path = Path(directory) / "build.json"
+    if not path.is_file():
+        return None
+    entry = json.loads(path.read_text()).get("resources", {}).get(machine, {})
+    if "coil_model" not in entry:
+        return None
+    return coil_model_name_of_record(machine, entry["coil_model"])
 
 
 def scaler_path(version: int, report_root: Path | str = DEFAULT_REPORT_ROOT) -> Path:

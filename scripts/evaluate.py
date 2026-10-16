@@ -67,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--feature-root", type=Path, default=fe.DEFAULT_FEATURE_ROOT)
     parser.add_argument("--feature-config", type=Path, default=None)
     parser.add_argument("--scaler", type=Path, default=None)
+    parser.add_argument("--mast-feature-dir", type=Path, default=None,
+                        help="MAST feature folder (for example ../data/processed/features/v2_solhalf); its build record "
+                             "sets the MAST coil model of the maps, as in predict.py")
     parser.add_argument("--targets-root", type=Path, default=tb.DEFAULT_TARGET_ROOT)
     parser.add_argument("--green-dir", type=Path, default=predictors.DEFAULT_GREEN_DIR)
     parser.add_argument("--references-dir", type=Path, default=bl.DEFAULT_REFERENCE_DIR)
@@ -75,7 +78,8 @@ def main(argv: list[str] | None = None) -> int:
     started = time.time()
     chain_paths = pr.ChainPaths(table_root=args.table_root, feature_root=args.feature_root, feature_config=args.feature_config,
                                 scaler=args.scaler, targets_root=args.targets_root, green_dir=args.green_dir,
-                                data_root=args.data_root, checkpoint_root=args.checkpoint_root)
+                                data_root=args.data_root, checkpoint_root=args.checkpoint_root,
+                                feature_dirs={"MAST": args.mast_feature_dir} if args.mast_feature_dir else None)
     paths = ev.EvalPaths(run_root=args.run_root, chain=chain_paths, split=args.split, references_dir=args.references_dir)
     result = ev.evaluate(args.run, paths, args.seed_runs, args.workers, args.scalar_workers, args.device,
                          permutation=not args.no_permutation, mast=not args.no_mast, mast_shot_step=args.mast_shot_step,

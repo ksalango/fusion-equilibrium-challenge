@@ -28,7 +28,7 @@ import pandas as pd
 from fusion_eq import (baseline as bl, coil_pattern as cp, current_basis as cb, current_target as ct, dataset,
                        frame_table as ft, lattice as lt, predictors, split as sp, starter_kit, target_build as tb,
                        target_checks as tc, targets)
-from fusion_eq.coil_flux import GreenTable, adopted_scales
+from fusion_eq.coil_flux import GreenTable, adopted_scales, coil_model_names
 from fusion_eq.coil_scales import REFERENCE_PHASES
 from fusion_eq.dataset import default_data_root, run_info
 from fusion_eq.machines import machine_config
@@ -309,7 +309,7 @@ def check_y16(objects, split: dict, record: dict, args, workers: int) -> tuple[t
     d3d_table = predictors.green_table(args.green_dir, "DIII-D")
     d3d_scales = adopted_scales("DIII-D", d3d_table.columns)
     mast_table = predictors.green_table(args.green_dir, "MAST")
-    mast_scales = adopted_scales("MAST", mast_table.columns)
+    mast_scales = adopted_scales("MAST", mast_table.columns, args.mast_coil_model)
     ridge_columns = [c for r in objects.remainder_model.ridges.values() for c in r.columns]
     d3d_columns = [*targets.current_columns_of(d3d_table, "DIII-D"), "ip__mean", *ridge_columns, *bl.input_columns()]
     out = {}
@@ -440,6 +440,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-y16", action="store_true", help="leave out Y16 (scoring of the mean current)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--mast-coil-model", default=None, choices=coil_model_names("MAST"),
+                        help="MAST coil model of the Y16 mean-current maps (the default model; unit before 15 October 2026)")
     args = parser.parse_args(argv)
 
     started = time.time()

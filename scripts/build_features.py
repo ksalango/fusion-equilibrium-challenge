@@ -13,14 +13,24 @@ Steps:
 3. The robust scaler is fitted on the ``train`` list of ``--split``, originals and mirrors
    together, and written to ``reports/features/v<version>/scaler.json`` (committed).
 4. ``<out>/v<version>/build.json``: commits, arguments, the configuration and its hash,
-   the machine constants with their verified status, the point tables, the X1 counts
-   (feature rows against frame-table rows per split), the X2 reads and the X4 result.
+   the machine constants with their verified status, the coil model of each machine by name,
+   the point tables, the X1 counts (feature rows against frame-table rows per split), the X2
+   reads and the X4 result.
+
+Coil models (``coil_flux.COIL_MODELS``): each machine's default unless ``--coil-model
+MACHINE=NAME`` names another. A build into a folder whose ``build.json`` records another coil
+model for a machine it rebuilds stops, so that a stored table never changes model in place.
+``--variant NAME`` writes to ``<out>/v<version>_<NAME>`` (layout clearance to
+``<report-root>/v<version>_<NAME>``) and fits no scaler: a variant build is read with the
+version's scaler, fitted on DIII-D training.
 
 Requires the frame table built with Part 0 (``__rate50``, ``ip_rise_ms``, ``sol_at_rise``).
 Nothing is written under the raw data root. Usage::
 
     python scripts/build_features.py --config configs/features_v1.yaml
     python scripts/build_features.py --config configs/features_v2.yaml
+    python scripts/build_features.py --config configs/features_v2.yaml --splits mast_public_test \
+        --coil-model MAST=sol_half --variant solhalf
 """
 
 from __future__ import annotations
@@ -37,7 +47,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from fusion_eq import coil_pattern as cp, dataset, features as fe, frame_table as ft, split as sp
-from fusion_eq.coil_flux import GreenTable
+from fusion_eq.coil_flux import DEFAULT_COIL_MODELS, GreenTable, coil_model_names
 from fusion_eq.dataset import default_data_root, read_shots_file, run_info
 from fusion_eq.feature_scaler import RobustScaler
 from fusion_eq.machines import machine_config
@@ -85,8 +95,9 @@ def layout_check(config: fe.FeatureConfig, args) -> tuple[dict, pd.DataFrame]:
 
 
 def build_split(split: str, config: fe.FeatureConfig, resources: fe.MachineResources, args,
-                shot_filter: list[str] | None) -> dict:
-    """Writes one split's feature table; returns its counts."""
+                shot_filter: list[str] | None, variant: str | None = None) -> dict:
+    """Writes one split's feature table (to the variant folder when ``variant``); returns its
+    counts."""
     machine = dataset.SPLIT_MACHINE[split]
     reads = sorted({c for cols in fe.feature_reads(config, machine).values() for c in cols})
     check_frame_table(split, args.table_dir, reads)
@@ -94,7 +105,7 @@ def build_split(split: str, config: fe.FeatureConfig, resources: fe.MachineResou
     if shot_filter is not None:
         shots = [s for s in shots if s in set(shot_filter)]
     columns = config.all_columns()
-    path = fe.features_path(split, config.version, args.out)
+    path = fe.features_path(split, config.version, args.out, variant)
     tmp = path.with_suffix(".tmp.parquet")
     writer = pq.ParquetWriter(tmp, feature_schema(columns))
     n_rows, n_table_rows = 0, 0
@@ -123,6 +134,32 @@ def build_split(split: str, config: fe.FeatureConfig, resources: fe.MachineResou
             "x1_rows_match": bool(keys_match)}
 
 
+def parse_coil_models(items: list[str] | None) -> dict[str, str]:
+    """Machine to coil-model name: the defaults, with ``MACHINE=NAME`` items applied.
+
+    Raises:
+        SystemExit: for a malformed item, an unknown machine or an unregistered name.
+    """
+    models = dict(DEFAULT_COIL_MODELS)
+    for item in items or []:
+        machine, sep, name = item.partition("=")
+        if not sep or machine not in models:
+            raise SystemExit(f"--coil-model {item!r}: expected MACHINE=NAME with MACHINE one of {sorted(models)}")
+        if name not in coil_model_names(machine):
+            raise SystemExit(f"--coil-model {item!r}: no model {name!r} on {machine}; known: {list(coil_model_names(machine))}")
+        models[machine] = name
+    return models
+
+
+def check_existing_build(out_dir: Path, splits: list[str], coil_models: dict[str, str]) -> None:
+    """Stops when ``out_dir`` holds a build whose coil model differs on a machine being rebuilt."""
+    for machine in sorted({dataset.SPLIT_MACHINE[s] for s in splits}):
+        recorded = fe.build_coil_model(out_dir, machine)
+        if recorded is not None and recorded != coil_models[machine]:
+            raise SystemExit(f"{out_dir} was built with the {machine} coil model {recorded!r}, not {coil_models[machine]!r}; "
+                             f"pass --coil-model {machine}={recorded} to rebuild it, or --variant to write a separate build")
+
+
 def fit_scaler(config: fe.FeatureConfig, args, shot_filter: list[str] | None) -> tuple[RobustScaler, dict]:
     """Robust scaler on the training list's frames, originals and mirrors together."""
     train = sorted(sp.read_split(args.split)["train"])
@@ -147,14 +184,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=fe.DEFAULT_FEATURE_ROOT)
     parser.add_argument("--report-root", type=Path, default=fe.DEFAULT_REPORT_ROOT)
     parser.add_argument("--shots-per-chunk", type=int, default=500)
+    parser.add_argument("--coil-model", action="append", default=None, metavar="MACHINE=NAME",
+                        help="coil model of a machine (coil_flux.COIL_MODELS); repeat per machine; the defaults otherwise")
+    parser.add_argument("--variant", default=None, help="write to <out>/v<version>_<variant>; no scaler is fitted")
     args = parser.parse_args(argv)
 
     started = time.time()
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     config = fe.FeatureConfig.load(args.config)
     shot_filter = read_shots_file(args.shots_file) if args.shots_file else None
-    out_dir = fe.features_dir(config.version, args.out)
-    report_dir = Path(args.report_root) / f"v{config.version}"
+    coil_models = parse_coil_models(args.coil_model)
+    out_dir = fe.features_dir(config.version, args.out, args.variant)
+    report_dir = Path(args.report_root) / out_dir.name
+    check_existing_build(out_dir, args.splits, coil_models)
     out_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -165,25 +207,31 @@ def main(argv: list[str] | None = None) -> int:
     if layout["status"] != "pass":
         raise SystemExit(f"the layout fails the clearance rule: {layout['failing']}")
 
-    resources = {m: fe.load_resources(m, config, args.data_root, args.green_dir) for m in ("DIII-D", "MAST")}
+    resources = {m: fe.load_resources(m, config, args.data_root, args.green_dir, coil_model=coil_models[m])
+                 for m in ("DIII-D", "MAST")}
     for machine, res in resources.items():
         unverified = [k for k, v in res.record["constants"].items() if not v["verified"]]
-        log(f"{machine}: point table {'built' if res.record['point_table']['built'] else 'from the cache'}; "
+        log(f"{machine}: coil model {res.scales.name}; point table "
+            f"{'built' if res.record['point_table']['built'] else 'from the cache'}; "
             f"unverified constants: {', '.join(unverified) or 'none'}")
 
     counts = {}
     for split in args.splits:
-        counts[split] = build_split(split, config, resources[dataset.SPLIT_MACHINE[split]], args, shot_filter)
+        counts[split] = build_split(split, config, resources[dataset.SPLIT_MACHINE[split]], args, shot_filter,
+                                    variant=args.variant)
         log(f"{split}: {counts[split]['n_rows']} rows over {counts[split]['n_shots']} shots")
 
     scaler_info = None
-    if SCALER_SPLIT in args.splits:
+    if args.variant is not None:
+        scaler_info = {"note": f"variant build: no scaler fitted; read with {fe.scaler_path(config.version, args.report_root)}"}
+    elif SCALER_SPLIT in args.splits:
         scaler, scaler_info = fit_scaler(config, args, shot_filter)
         scaler.save(fe.scaler_path(config.version, args.report_root))
         log(f"scaler: {len(scaler.columns)} columns over {scaler.n_rows} rows (originals and mirrors)")
 
     info = run_info(argv, vars(args), timestamp, time.time() - started, config=config.to_dict(),
-                    config_hash=config.hash(), resources={m: r.record for m, r in resources.items()},
+                    config_hash=config.hash(), variant=args.variant, coil_models=coil_models,
+                    resources={m: r.record for m, r in resources.items()},
                     layout_check=layout, counts=counts,
                     x1_pass=all(c["x1_rows_match"] for c in counts.values()),
                     x2_reads={m: fe.feature_reads(config, m) for m in ("DIII-D", "MAST")},

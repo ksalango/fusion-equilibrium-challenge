@@ -23,7 +23,9 @@ coil flux of any frame is then a weighted sum of patterns, which costs one matri
 product. Patterns are in Wb/rad per kA. Fitted multipliers (``CoilScales``) are
 applied at that point, together with a flat solenoid term, a flux that is the same
 at every node and proportional to the solenoid current, which stands in for the
-part of the solenoid's flux that the lumped rectangle does not produce.
+part of the solenoid's flux that the lumped rectangle does not produce. Each machine's
+coil models are named (``COIL_MODELS``): DIII-D ``solenoid_flat``; MAST ``sol_half`` (the
+default, solenoid elements at half the feed current) and ``unit`` (the earlier model).
 
 A point table (``PointTable``) holds the same patterns at a list of points instead of the
 grid, for features that sample the coil flux at fixed positions; it applies the scales
@@ -512,28 +514,85 @@ def build_point_table(machine: str | MachineConfig, geometry: CoilGeometry, poin
 
 ADOPTED = "adopted"
 RESOURCE_DIR = Path(__file__).resolve().parent / "resources"
-# Adopted coil model per machine: the file is the ``CoilScales`` record chosen at the close
-# of the coil-flux phase (DIII-D: shaping coils as stored plus the flat solenoid term, the
-# ``solenoid_flat`` variant of the fit of 10 October 2026). A machine without a file uses
-# the default record, every scale 1 and no flat term.
-ADOPTED_FILES = {"DIII-D": RESOURCE_DIR / "coil_scales_d3d.json"}
+UNIT_MODEL = "unit"
+# Named coil models per machine: the ``CoilScales`` file of each name, or None for the unit
+# model (every scale 1, no flat term, the calculated flux unchanged).
+# - DIII-D ``solenoid_flat``: shaping coils as stored plus the flat solenoid term, the
+#   variant of the fit of 10 October 2026 (F48).
+# - MAST ``sol_half``: every solenoid element at half the feed current (two-in-hand
+#   winding), P-coils as stored (reports/coil_flux/mast_solenoid_check.md). ``unit`` is the
+#   model of every MAST build and submission before 15 October 2026.
+COIL_MODELS: dict[str, dict[str, Path | None]] = {
+    "DIII-D": {"solenoid_flat": RESOURCE_DIR / "coil_scales_d3d.json"},
+    "MAST": {"sol_half": RESOURCE_DIR / "coil_scales_mast.json", UNIT_MODEL: None},
+}
+# The model ``adopted_scales`` and every build use unless a name is given.
+DEFAULT_COIL_MODELS = {"DIII-D": "solenoid_flat", "MAST": "sol_half"}
+# File of each machine's default model (``scripts/fit_coil_scales.py`` compares a new DIII-D
+# fit with it).
+ADOPTED_FILES = {m: COIL_MODELS[m][n] for m, n in DEFAULT_COIL_MODELS.items() if COIL_MODELS[m][n] is not None}
 
 
-def adopted_scales(machine: str, columns: Iterable[str]) -> "CoilScales":
-    """The adopted ``CoilScales`` of a machine, or the default record when none is adopted.
+def coil_model_names(machine: str) -> tuple[str, ...]:
+    """Registered coil-model names of a machine."""
+    if machine not in COIL_MODELS:
+        raise KeyError(f"no coil models for {machine!r}; known: {sorted(COIL_MODELS)}")
+    return tuple(COIL_MODELS[machine])
+
+
+def coil_model(machine: str, columns: Iterable[str], name: str | None = None) -> "CoilScales":
+    """The named coil model of a machine (``DEFAULT_COIL_MODELS`` when ``name`` is None).
 
     Raises:
-        KeyError: when the adopted file lacks one of ``columns``.
+        KeyError: for an unregistered name, or when the model's file lacks one of ``columns``.
+        ValueError: when the file belongs to another machine or carries another name.
     """
     columns = list(columns)
-    path = ADOPTED_FILES.get(machine)
-    if path is None or not path.is_file():
+    name = DEFAULT_COIL_MODELS[machine] if name is None else name
+    if name not in coil_model_names(machine):
+        raise KeyError(f"no coil model {name!r} on {machine}; known: {list(coil_model_names(machine))}")
+    path = COIL_MODELS[machine][name]
+    if path is None:
         return CoilScales.default(machine, columns)
     record = CoilScales.load(path)
     if record.machine != machine:
         raise ValueError(f"{path} is for {record.machine}, not {machine}")
+    if record.name and record.name != name:
+        raise ValueError(f"{path} carries the name {record.name!r}, registered as {name!r}")
+    record.name = name
     record.vector(columns)                   # every column must have a scale
     return record
+
+
+def adopted_scales(machine: str, columns: Iterable[str], name: str | None = None) -> "CoilScales":
+    """The adopted coil model of a machine: ``coil_model`` with the default name, or ``name``."""
+    return coil_model(machine, columns, name)
+
+
+def coil_model_name_of_record(machine: str, record: dict) -> str:
+    """Name of the registered coil model a stored ``CoilScales.to_dict`` record describes.
+
+    A record with a ``name`` must match that model's scales and flat term. A record written
+    before the models were named is identified by its content alone (the version-2 feature
+    build of 14 October 2026: DIII-D ``solenoid_flat``, MAST ``unit``).
+
+    Raises:
+        ValueError: when the record is for another machine, or matches no registered model.
+    """
+    stored = CoilScales.from_dict(record)
+    if stored.machine != machine:
+        raise ValueError(f"the record is for {stored.machine}, not {machine}")
+    columns = list(stored.scales)
+    candidates = [stored.name] if stored.name else list(coil_model_names(machine))
+    for name in candidates:
+        try:
+            model = coil_model(machine, columns, name)
+        except KeyError:
+            continue
+        if np.array_equal(model.vector(columns), stored.vector(columns)) and model.flat_wb_per_ka == stored.flat_wb_per_ka:
+            return name
+    raise ValueError(f"the {machine} coil-model record (name {stored.name or 'none'}) matches no registered model "
+                     f"{list(coil_model_names(machine))}")
 
 
 def coil_flux(table: GreenTable, currents_ka, scales=ADOPTED) -> np.ndarray:
@@ -553,10 +612,10 @@ def coil_flux(table: GreenTable, currents_ka, scales=ADOPTED) -> np.ndarray:
 class CoilScales:
     """Fitted multipliers of a machine's current columns, applied by ``GreenTable.flux``.
 
-    The values are fitted on DIII-D training shots (``fusion_eq.coil_scales``) and
-    saved, so that the same record serves training, validation and test. A machine
-    without a fit uses ``default``: every scale 1 and no flat term, which leaves the
-    calculated flux unchanged; MAST is in that state.
+    The values are fitted on DIII-D training shots (``fusion_eq.coil_scales``) or set from
+    the hardware (the MAST solenoid) and saved, so that the same record serves training,
+    validation and test. ``default`` is the unit model: every scale 1 and no flat term,
+    which leaves the calculated flux unchanged. Named models are listed in ``COIL_MODELS``.
 
     Attributes:
         machine: Machine name.
@@ -564,17 +623,19 @@ class CoilScales:
         flat_wb_per_ka: Flat solenoid term in Wb/rad per kA of the solenoid column,
             added at every node of the grid; 0 when not fitted.
         source: Free text on where the values come from (fit variant, run).
+        name: Registered coil-model name (``COIL_MODELS``); empty for an unnamed record.
     """
 
     machine: str
     scales: dict[str, float]
     flat_wb_per_ka: float = 0.0
     source: str = ""
+    name: str = ""
 
     @classmethod
     def default(cls, machine: str, columns: Iterable[str]) -> "CoilScales":
-        """Every scale 1 and no flat term."""
-        return cls(machine=machine, scales={c: 1.0 for c in columns}, flat_wb_per_ka=0.0, source="default")
+        """The unit model: every scale 1 and no flat term."""
+        return cls(machine=machine, scales={c: 1.0 for c in columns}, flat_wb_per_ka=0.0, source="default", name=UNIT_MODEL)
 
     def vector(self, columns: Iterable[str]) -> np.ndarray:
         """Scales in the given column order.
@@ -589,12 +650,13 @@ class CoilScales:
 
     def to_dict(self) -> dict:
         return {"machine": self.machine, "scales": dict(self.scales), "flat_wb_per_ka": float(self.flat_wb_per_ka),
-                "source": self.source}
+                "source": self.source, "name": self.name}
 
     @classmethod
     def from_dict(cls, d: dict) -> "CoilScales":
         return cls(machine=str(d["machine"]), scales={k: float(v) for k, v in d["scales"].items()},
-                   flat_wb_per_ka=float(d.get("flat_wb_per_ka", 0.0)), source=str(d.get("source", "")))
+                   flat_wb_per_ka=float(d.get("flat_wb_per_ka", 0.0)), source=str(d.get("source", "")),
+                   name=str(d.get("name", "")))
 
     def save(self, path: Path | str) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=1, sort_keys=True) + "\n")

@@ -151,3 +151,25 @@ def test_outputs_inside_the_stored_locations_are_refused(ws, tmp_path):
     assert result.returncode != 0 and "nothing is written there" in result.stderr and not work.exists()
     result = run_check(ws, ws["features"] / "report")
     assert result.returncode != 0 and "--report-root" in result.stderr
+
+
+def test_a_variant_feature_build_is_rebuilt_under_its_recorded_coil_model(ws, tmp_path):
+    features = tmp_path / "features"
+    shutil.copytree(ws["features"], features)
+    common = ["--data-root", str(ws["data"]), "--table-dir", str(ws["table_dir"]), "--green-dir", str(ws["green"]),
+              "--split", str(ws["split"])]
+    result = subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "build_features.py"), "--config",
+                             str(REPO_ROOT / "configs" / "features_v2.yaml"), "--out", str(features), "--report-root",
+                             str(tmp_path / "feature_reports"), "--splits", "mast_public_test", "--coil-model", "MAST=unit",
+                             "--variant", "unit", *common], capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0, result.stderr
+    # The unit model is not the MAST default: a rebuild under the default would differ.
+    result = run_check({**ws, "features": features}, tmp_path / "report", "--inputs", "stored", "--targets", str(tmp_path / "none"),
+                       "--feature-variant", "unit")
+    assert result.returncode == 0, result.stdout + result.stderr
+    info = json.loads((tmp_path / "report" / "determinism_check.json").read_text())
+    by_part = {(r["table"], r["part"]): r for r in info["results"]}
+    assert by_part[("features v2_unit", "mast_public_test")]["identical"]
+    assert by_part[("features v2_unit", "diii_d_train")]["skipped"].startswith("diii_d_train.parquet not in")
+    assert info["features"]["coil_models"] == {"DIII-D": "solenoid_flat", "MAST": "unit"} and info["features"]["variant"] == "unit"
+    assert "coil models from its build.json: DIII-D solenoid_flat, MAST unit" in (tmp_path / "report" / "determinism_check.md").read_text()

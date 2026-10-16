@@ -12,9 +12,10 @@
 | targets v1 | validation | 6 | 1481 | 1481 | `4ac68d7ee1ef1fa9` | `4ac68d7ee1ef1fa9` | identical |
 | targets v1 | local_test | 1 | 153 | 153 | `4bbcb2a0d7f7cb0f` | `4bbcb2a0d7f7cb0f` | identical |
 
-- Commit now `c89e246de89d`; stored builds made at: frame table `393318b0c6b9`, features `e596e2b65f07`, targets `c89e246de89d`. A difference with a different commit can come from a code change rather than non-determinism.
+- Commit now `64d128ebfbd0`; stored builds made at: frame table `393318b0c6b9`, features `e596e2b65f07`, targets `c89e246de89d`. A difference with a different commit can come from a code change rather than non-determinism.
 - Target objects against their checksums in build.json: all match
 - Target shape numbers: train scorer reference builder; validation scorer reference builder; local_test scorer reference builder
 - Point tables: DIII-D from the cache, MAST from the cache
+- Feature build v2, coil models from its build.json: DIII-D solenoid_flat, MAST unit
 
 Runtime 19 s.

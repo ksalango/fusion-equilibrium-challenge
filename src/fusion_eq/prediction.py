@@ -15,7 +15,7 @@ are predicted with it:
    checkpoints of the arm's seeds.
 3. Map: the standardized coefficients times the component standard deviations, through the
    machine's flux basis of the target build (share, placement and plasma response in one
-   matrix), plus the machine's coil flux under its adopted coil model, plus the ridge
+   matrix), plus the machine's coil flux under its coil model, plus the ridge
    remainder on DIII-D (zero on MAST), assembled by ``compose_map`` with the machine's sign
    constant. The MAST constant +1 is asserted before every MAST map (F71, Z12).
    A sequence model (rung 2) runs over every frame of the shot with the time steps of the frame
@@ -23,6 +23,14 @@ are predicted with it:
    the coefficients come from the whole shot and the maps and scalars from the flagged frames.
 4. Scalars: ``q95_from_map`` on every predicted map (the machine's verified toroidal-field
    turns, no fitted constant); betaN by the per-machine heads of ``scalar_heads``.
+
+Coil models (``coil_flux.COIL_MODELS``): by default each machine's model is the one its
+feature build records (``build.json`` of the machine's feature folder), so the maps and the
+features always use the same model; a build without a record falls back to the registered
+default. A model named explicitly must agree with the record unless the mismatch is allowed
+(``allow_coil_model_mismatch``, a diagnostic that changes the maps only). A machine's
+feature folder is ``<feature_root>/v<version>`` unless ``ChainPaths.feature_dirs`` names
+another (a variant build).
 
 The model runs on the CPU by default: the outputs are then reproducible bit for bit on any
 machine. Tensors leave the device before any float64 conversion, so the MPS backend (no
@@ -46,7 +54,7 @@ import torch
 from fusion_eq import (baseline as bl, current_basis as cb, dataset, features as fe, frame_table as ft, io, loader as ld,
                        plasma_models as pm, predictors, scalar_heads as sh, scalars as sc, split as sp, starter_kit,
                        submission, target_build as tb, targets)
-from fusion_eq.coil_flux import CoilScales, GreenTable, adopted_scales
+from fusion_eq.coil_flux import DEFAULT_COIL_MODELS, CoilScales, GreenTable, adopted_scales
 from fusion_eq.feature_scaler import RobustScaler
 from fusion_eq.machines import machine_config
 from fusion_eq.model_config import ModelConfig
@@ -344,13 +352,16 @@ class TableSource:
         version: Feature version.
         frame_columns: Machine to the frame-table columns read (label-guarded).
         feature_columns: Feature columns read.
+        feature_dirs: Machine to a feature folder used instead of ``<root>/v<version>`` (a
+            variant build holding ``<split>.parquet``).
     """
 
     def __init__(self, table_root: Path | str, feature_root: Path | str, version: int, frame_columns: Mapping[str, Sequence[str]],
-                 feature_columns: Sequence[str]) -> None:
+                 feature_columns: Sequence[str], feature_dirs: Mapping[str, Path | str] | None = None) -> None:
         self.table_root = Path(table_root)
         self.feature_root = Path(feature_root)
         self.version = int(version)
+        self.feature_dirs = {m: Path(d) for m, d in (feature_dirs or {}).items()}
         self.frame_columns = {m: require_inputs(c, m) for m, c in frame_columns.items()}
         self.feature_columns = list(dict.fromkeys(feature_columns))
         self._cache: dict[str, dict[str, pd.DataFrame]] = {}
@@ -363,8 +374,12 @@ class TableSource:
     def _read(self, split: str, shot_ids: Sequence[str] | None) -> pd.DataFrame:
         machine = dataset.SPLIT_MACHINE[split]
         frames = ft.read_frame_table(split, ["shot", "frame", *self.frame_columns[machine]], shot_ids, root=self.table_root)
-        feats = fe.read_features(split, self.version, self.feature_columns, shot_ids, self.feature_root)
+        feats = fe.read_features_at(self.feature_dir(machine) / f"{split}.parquet", self.feature_columns, shot_ids)
         return merge_inputs(frames, feats)
+
+    def feature_dir(self, machine: str) -> Path:
+        """Feature folder read for a machine."""
+        return self.feature_dirs.get(machine, fe.features_dir(self.version, self.feature_root))
 
     def rows(self, split: str, shot_id: str) -> pd.DataFrame:
         cached = self._cache.get(split, {}).pop(str(shot_id), None)
@@ -526,6 +541,50 @@ class ChainPaths:
     green_dir: Path = predictors.DEFAULT_GREEN_DIR
     data_root: Path = dataset.DEFAULT_DATA_ROOT
     checkpoint_root: Path = DEFAULT_CHECKPOINT_ROOT
+    feature_dirs: dict | None = None
+
+    def feature_dir(self, machine: str, version: int) -> Path:
+        """Feature folder of a machine: ``feature_dirs[machine]``, or ``<feature_root>/v<version>``."""
+        if self.feature_dirs and machine in self.feature_dirs:
+            return Path(self.feature_dirs[machine])
+        return fe.features_dir(version, self.feature_root)
+
+
+def resolve_coil_models(paths: ChainPaths, version: int, requested: Mapping[str, str] | None = None,
+                        allow_mismatch: bool = False) -> dict[str, dict]:
+    """Per machine, the coil model of the maps and the one the features were built with.
+
+    Args:
+        paths: Chain locations (the feature folder of each machine).
+        version: Feature version.
+        requested: Machine to an explicit coil-model name; the feature build's record (or the
+            default without one) for the others.
+        allow_mismatch: Accept an explicit name that differs from the feature build's record.
+
+    Returns:
+        Machine to ``{"maps", "features", "source", "feature_dir"}``.
+
+    Raises:
+        FileNotFoundError: when a folder named in ``paths.feature_dirs`` holds no ``build.json``.
+        ValueError: when an explicit name differs from the record and the mismatch is not allowed.
+    """
+    out = {}
+    for machine in MACHINES:
+        folder = paths.feature_dir(machine, version)
+        if paths.feature_dirs and machine in paths.feature_dirs and not (folder / "build.json").is_file():
+            raise FileNotFoundError(f"{folder / 'build.json'} not found: a {machine} feature folder must carry its build record")
+        recorded = fe.build_coil_model(folder, machine)
+        features = recorded if recorded is not None else DEFAULT_COIL_MODELS[machine]
+        name = (requested or {}).get(machine)
+        if name is None:
+            maps, source = features, "feature build record" if recorded is not None else "default (no feature build record)"
+        else:
+            if recorded is not None and name != recorded and not allow_mismatch:
+                raise ValueError(f"{machine} coil model {name!r} differs from {recorded!r} recorded by the feature build in "
+                                 f"{folder}; point to features built with {name!r}, or allow the mismatch explicitly")
+            maps, source = name, "named" + ("" if recorded in (None, name) else f", differs from the feature build's {recorded!r}")
+        out[machine] = {"maps": maps, "features": features, "source": source, "feature_dir": str(folder)}
+    return out
 
 
 def frame_build_params(table_root: Path | str) -> tuple[ft.BuildParams, str]:
@@ -539,11 +598,13 @@ def frame_build_params(table_root: Path | str) -> tuple[ft.BuildParams, str]:
 
 def build_chain(run_ids: Sequence[str], paths: ChainPaths = ChainPaths(), which: str = "best", mirror_average: bool | None = None,
                 seed_average: bool | None = None, heads: sh.BetanHeads | None = None, device: str | None = "cpu",
-                workers: int | None = 1) -> tuple[PredictionChain, dict]:
+                workers: int | None = 1, coil_models: Mapping[str, str] | None = None,
+                allow_coil_model_mismatch: bool = False) -> tuple[PredictionChain, dict]:
     """The chain of the given runs' checkpoints and the record of what it was built from.
 
     ``mirror_average`` and ``seed_average`` default to the first run's ``predict`` fields.
-    With seed averaging off, only the first run is used.
+    With seed averaging off, only the first run is used. Coil models follow
+    ``resolve_coil_models``.
     """
     members = load_members(run_ids, paths.checkpoint_root, which, device or "cpu")
     config = members[0].config
@@ -559,7 +620,8 @@ def build_chain(run_ids: Sequence[str], paths: ChainPaths = ChainPaths(), which:
     coefficients = CoefficientModel(members, fconfig, scaler, float(config.get("loader.clip_bound")), mirror, device or "cpu")
     objects = tb.TargetObjects.load(data_paths.target_dir())
     tables = {m: predictors.green_table(paths.green_dir, m) for m in MACHINES}
-    scales = {m: adopted_scales(m, tables[m].columns) for m in MACHINES}
+    models = resolve_coil_models(paths, version, coil_models, allow_coil_model_mismatch)
+    scales = {m: adopted_scales(m, tables[m].columns, models[m]["maps"]) for m in MACHINES}
     composer = MapComposer(objects, tables, scales, coefficients.sigma)
     chain = PredictionChain(coefficients, composer, heads, ScalarWorkers(workers))
     record = {"runs": [m.run_id for m in members], "checkpoints": {m.run_id: {"path": str(m.path), "sha256": m.sha256,
@@ -571,6 +633,10 @@ def build_chain(run_ids: Sequence[str], paths: ChainPaths = ChainPaths(), which:
                   "checksums": objects.record.get("checksums", {})},
               "sign_rule_c": {m: targets.sign_rule_c(m) for m in MACHINES},
               "coil_scales": {m: scales[m].to_dict() for m in MACHINES},
+              "coil_models": {m: models[m]["maps"] for m in MACHINES},
+              "feature_coil_models": {m: models[m]["features"] for m in MACHINES},
+              "coil_model_sources": {m: models[m]["source"] for m in MACHINES},
+              "feature_dirs": {m: models[m]["feature_dir"] for m in MACHINES},
               "machine_constants": {m: machine_config(m).constants_record() for m in MACHINES},
               "q95": {"method": "q95_from_map", "tf_turns": {m: sc.TF_TURNS[m] for m in MACHINES}}}
     return chain, record
@@ -702,6 +768,10 @@ class Rung1V1:
         source: ``tables`` (stored frame-table and feature rows, looked up by shot id) or
             ``raw`` (rebuilt from the shot handed to ``predict_shot``).
         heads: The betaN heads, or a path to a file written by ``BetanHeads.save``.
+        feature_dirs: Machine to a feature folder used instead of ``<feature_root>/v<version>``.
+        coil_models: Machine to an explicit coil-model name (``resolve_coil_models``).
+        allow_coil_model_mismatch: Accept an explicit coil model that differs from the feature
+            build's record (maps only; diagnostics).
         Other arguments: ``ChainPaths`` fields, averaging switches, device and the workers of
             the q95 and shape computation.
     """
@@ -715,7 +785,8 @@ class Rung1V1:
                  feature_config: Path | str | None = None, scaler: Path | str | None = None,
                  targets_root: Path | str = tb.DEFAULT_TARGET_ROOT, checkpoint_root: Path | str = DEFAULT_CHECKPOINT_ROOT,
                  which: str = "best", mirror_average: bool | None = None, seed_average: bool | None = None,
-                 device: str | None = "cpu", workers: int | None = 1) -> None:
+                 device: str | None = "cpu", workers: int | None = 1, feature_dirs: Mapping[str, Path | str] | None = None,
+                 coil_models: Mapping[str, str] | None = None, allow_coil_model_mismatch: bool = False) -> None:
         if source not in SOURCES:
             raise ValueError(f"source {source!r} is not one of {SOURCES}")
         self.split_path = Path(split_path)
@@ -727,7 +798,10 @@ class Rung1V1:
                                 feature_config=None if feature_config is None else Path(feature_config),
                                 scaler=None if scaler is None else Path(scaler), targets_root=Path(targets_root),
                                 green_dir=Path(green_dir), data_root=Path(data_root) if data_root else dataset.default_data_root(),
-                                checkpoint_root=Path(checkpoint_root))
+                                checkpoint_root=Path(checkpoint_root),
+                                feature_dirs={m: Path(d) for m, d in (feature_dirs or {}).items()} or None)
+        self.coil_models = dict(coil_models or {})
+        self.allow_coil_model_mismatch = bool(allow_coil_model_mismatch)
         self.which, self.mirror_average, self.seed_average = which, mirror_average, seed_average
         self.device, self.workers = device, workers
         self.chain: PredictionChain | None = None
@@ -747,7 +821,7 @@ class Rung1V1:
         if heads is None:
             raise ValueError("rung1_v1 needs the betaN heads (scripts/predict.py fits them, or pass --heads)")
         self.chain, record = build_chain(self.runs, self.paths, self.which, self.mirror_average, self.seed_average, heads,
-                                         self.device, self.workers)
+                                         self.device, self.workers, self.coil_models, self.allow_coil_model_mismatch)
         if self.chain.coefficients.sequence != self.sequence:
             kind = "a sequence model (rung 2)" if self.chain.coefficients.sequence else "a frame model (rung 1)"
             raise ValueError(f"{self.name} cannot predict with {kind}; use {'rung2_v1' if self.chain.coefficients.sequence else 'rung1_v1'}")
@@ -755,19 +829,24 @@ class Rung1V1:
         frame_columns = {m: self.chain.frame_columns(m) for m in MACHINES}
         features = self.chain.feature_columns()
         if self.source_name == "tables":
-            self.source = TableSource(self.paths.table_root, self.paths.feature_root, record["feature_version"], frame_columns, features)
+            self.source = TableSource(self.paths.table_root, self.paths.feature_root, record["feature_version"], frame_columns, features,
+                                      self.paths.feature_dirs)
             build_note = None
         else:
             params, build_note = frame_build_params(self.paths.table_root)
             fconfig = self.chain.coefficients.fconfig
-            resources = {m: fe.load_resources(m, fconfig, self.paths.data_root, self.paths.green_dir) for m in MACHINES}
+            # The features are rebuilt under the coil model the stored features carry, so that
+            # both sources give the same rows.
+            resources = {m: fe.load_resources(m, fconfig, self.paths.data_root, self.paths.green_dir,
+                                              coil_model=record["feature_coil_models"][m]) for m in MACHINES}
             self.source = RawSource(params, fconfig, resources, frame_columns, features)
         self.identifiers = {**record, "source": self.source_name, "heads": heads.summary(), "heads_file": heads_file,
                             "mast_sign_asserted": True}
         if build_note is not None:
             self.identifiers["frame_build_params"] = {"params": self.source.params.to_dict(), "source": build_note}
         log(f"{self.name} ready: {len(record['runs'])} checkpoint(s) {', '.join(record['runs'])}, source {self.source_name}, "
-            f"mirror averaging {'on' if record['mirror_average'] else 'off'}, device {record['device']}")
+            f"mirror averaging {'on' if record['mirror_average'] else 'off'}, device {record['device']}, coil models "
+            + ", ".join(f"{m} {record['coil_models'][m]}" for m in MACHINES))
         return self.identifiers
 
     def rows(self, shot: io.Shot) -> pd.DataFrame:

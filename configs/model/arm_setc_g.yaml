@@ -1,0 +1,6 @@
+# Comparison arm of 16 October 2026 (claude/eval-2026-10-15-night-addendum.md): set_c (set_a plus
+# shaping) under arm G's loss settings; identical to arm_g.yaml except the feature set.
+base: arm_g.yaml
+
+features:
+  set: set_c

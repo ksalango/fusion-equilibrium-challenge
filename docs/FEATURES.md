@@ -179,8 +179,12 @@ channel positions, and helps DIII-D only).
 | --- | --- | --- |
 | `set_a` | Coil points, Thomson pair and flag, `q_cyl`, the three shot-position features | Points + 7 |
 | `set_b` | The nine named coil terms in place of the points | 16 |
+| `set_c` (version 2) | `set_a` plus `shaping` after the coil points | Points + 8 (30) |
+| `set_b10` (version 2) | Version-2 `set_b` with `coil_c10` in place of `shafranov_lambda` | 15 |
 
-Each candidate is added to a set singly in later ablations.
+Each candidate is added to a set singly in later ablations. Sets are read by the model phase
+only; adding a set leaves the build's inputs unchanged, and the build checks (X1, D7) compare
+the stored configuration without its sets (`features.same_build_inputs`).
 
 ## Configuration
 

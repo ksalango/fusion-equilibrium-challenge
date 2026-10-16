@@ -291,19 +291,25 @@ def mast_sensitivity(chain: pr.PredictionChain, rows: pd.DataFrame, groups: Mapp
 
 # ---------------------------------------------------------------------- clip rates
 def clip_rate_table(columns: Sequence[str], scaler: RobustScaler, bound: float, feature_root: Path, version: int,
-                    val_ids: Sequence[str]) -> dict:
+                    val_ids: Sequence[str], feature_dirs: dict | None = None) -> dict:
     """Share of scaled values beyond the bound per column, on validation (DIII-D), the DIII-D
-    test fold and the MAST test fold (the folds whose feature tables exist)."""
+    test fold and the MAST test fold (the folds whose feature tables exist). ``feature_dirs``
+    maps a machine to a feature folder read instead of ``<feature_root>/v<version>`` (the
+    sol_half MAST build), as in the prediction chain."""
     sources = {"DIII-D validation": ("diii_d_train", list(val_ids)), "DIII-D test": ("diii_d_public_test", None),
                "MAST test": ("mast_public_test", None)}
+    dirs = {m: Path(d) for m, d in (feature_dirs or {}).items()}
     out = {}
     for label, (split, shots) in sources.items():
-        if not fe.features_path(split, version, feature_root).is_file():
+        machine = dataset.SPLIT_MACHINE[split]
+        path = dirs[machine] / f"{split}.parquet" if machine in dirs else fe.features_path(split, version, feature_root)
+        if not path.is_file():
             continue
-        table = fe.read_features(split, version, list(columns), shots, feature_root)
-        x = scaler.transform(table, dataset.SPLIT_MACHINE[split], list(columns))
+        table = fe.read_features_at(path, list(columns), shots)
+        x = scaler.transform(table, machine, list(columns))
         rates = ld.clip_rates(x, bound)
-        out[label] = {"n_frames": int(len(table)), "rates": {c: float(r) for c, r in zip(columns, rates)}}
+        out[label] = {"n_frames": int(len(table)), "rates": {c: float(r) for c, r in zip(columns, rates)},
+                      "feature_file": str(path)}
     return out
 
 
@@ -412,6 +418,8 @@ def render(result: Mapping) -> str:
              f"{r['eval_set']['corner']['thresholds']['q_cyl']:.3f} and ts_beta_p < "
              f"{r['eval_set']['corner']['thresholds']['ts_beta_p_relaxed' if r['eval_set']['corner']['relaxed'] else 'ts_beta_p']:.4f}"
              f"{' (relaxed)' if r['eval_set']['corner']['relaxed'] else ''}, {r['eval_set']['corner']['n_frames']} frames.", "",
+             f"MAST features `{(r['chain'].get('feature_dirs') or {}).get('MAST', 'n/a')}`, MAST coil model of the maps "
+             f"{(r['chain'].get('coil_models') or {}).get('MAST', 'n/a')}.", "",
              mast_floor_line(), "", "## Checks", "", "| Id | Check | Status |", "| --- | --- | --- |"]
     for c in r["checks"]:
         lines.append(f"| {c['id']} | {c['check']} | {c['status']} |")
@@ -540,7 +548,8 @@ def evaluate(run_id: str, paths: EvalPaths = EvalPaths(), seed_runs: Sequence[st
     data_paths = ld.DataPaths(feature_root=paths.chain.feature_root, feature_config=paths.chain.feature_config,
                               scaler=paths.chain.scaler, target_root=paths.chain.targets_root, split=paths.split)
     source = pr.TableSource(paths.chain.table_root, paths.chain.feature_root, version,
-                            {m: chain.frame_columns(m) for m in pr.MACHINES}, chain.feature_columns())
+                            {m: chain.frame_columns(m) for m in pr.MACHINES}, chain.feature_columns(),
+                            paths.chain.feature_dirs)
 
     train_rows = pr.heads_training_rows(source, paths.split, lists["train"], heads_stride)
     chain.heads = sh.fit_heads(train_rows, None, (float("nan"), float("nan")), {"train_list": lists["train"], "stride": heads_stride})
@@ -596,7 +605,7 @@ def evaluate(run_id: str, paths: EvalPaths = EvalPaths(), seed_runs: Sequence[st
            "worst_20": worst_shots(result), "overfit": overfit_panel(record, read_metrics(Path(paths.run_root) / run_id), seeds, scores, warm_scores),
            "warm_start": warm_against_trained(record), "warm_chain": warm_chain_comparison(warm_scores, scores), "mirror": mirror, "clip_bound": float(config.get("loader.clip_bound")),
            "clip_rates": clip_rate_table(chain.coefficients.columns, chain.coefficients.scaler, float(config.get("loader.clip_bound")),
-                                         paths.chain.feature_root, version, es.shot_ids),
+                                         paths.chain.feature_root, version, es.shot_ids, paths.chain.feature_dirs),
            "permutation": perm, "mast_sensitivity": mast_part}
     out["checks"] = checks(out)
     chain.close()

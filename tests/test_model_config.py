@@ -58,3 +58,17 @@ def test_with_values_and_virtual_space_keys():
         base.with_values({"train.momentum": 0.9})
     with pytest.raises(ValueError):
         base.with_values({"model.dropout": 1.5})
+
+
+@pytest.mark.parametrize("arm, feature_set, n_columns", [("arm_setc_g", "set_c", 30), ("arm_setb10_g", "set_b10", 15)])
+def test_comparison_arms_differ_from_arm_g_only_in_the_feature_set(arm, feature_set, n_columns):
+    from fusion_eq import features as fe
+    from fusion_eq.loader import model_columns
+
+    g = ModelConfig.load(DEFAULT_CONFIG_DIR / "arm_g.yaml")
+    c = ModelConfig.load(DEFAULT_CONFIG_DIR / f"{arm}.yaml")
+    assert c.get("features.set") == feature_set and c.hash() != g.hash()
+    assert c.with_values({"features.set": "set_a"}).hash() == g.hash()
+    assert c.data["loss"] == g.data["loss"] and c.get("features.drop_groups") == []
+    config = fe.FeatureConfig.load(fe.DEFAULT_CONFIG.with_name(f"features_v{c.get('features.version')}.yaml"))
+    assert len(model_columns(config, c.get("features.set"), c.get("features.drop_groups"))) == n_columns

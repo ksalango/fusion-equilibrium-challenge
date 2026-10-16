@@ -106,3 +106,11 @@ sets:
   # set_b: shafranov_lambda in place of coil_c10, shaping in place of coil_c20 and coil_c02.
   set_b: [shafranov_lambda, coil_c01, shaping, coil_c11, coil_c30, coil_c21, coil_c12, coil_c03,
           ts_beta_p, ts_pe_peaking, ts_valid, q_cyl, ip_frac, ip_rate_rel, resistive_age]
+  # Comparison sets of 16 October 2026 (arms arm_setc_g and arm_setb10_g, pre-registered in
+  # claude/eval-2026-10-15-night-addendum.md). Sets are read by the model phase only; the build
+  # and the stored tables do not depend on them (features.same_build_inputs).
+  # set_c: set_a plus shaping, after the coil points (30 columns).
+  set_c: [coil_pt, shaping, ts_beta_p, ts_pe_peaking, ts_valid, q_cyl, ip_frac, ip_rate_rel, resistive_age]
+  # set_b10: set_b with coil_c10 in place of shafranov_lambda, in its position (15 columns).
+  set_b10: [coil_c10, coil_c01, shaping, coil_c11, coil_c30, coil_c21, coil_c12, coil_c03,
+            ts_beta_p, ts_pe_peaking, ts_valid, q_cyl, ip_frac, ip_rate_rel, resistive_age]

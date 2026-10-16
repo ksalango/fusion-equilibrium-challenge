@@ -100,11 +100,12 @@ def now() -> str:
 
 
 # ------------------------------------------------------------------------- resources
-def fallback_resources(args, machine: str, medians: dict[str, float]) -> sub.Fallbacks:
-    """The pipeline's fallback resources of a machine: Green's table and adopted scales on
-    both, the mean plasma shape of the split's training list on DIII-D only."""
+def fallback_resources(args, machine: str, medians: dict[str, float], coil_model: str | None = None) -> sub.Fallbacks:
+    """The pipeline's fallback resources of a machine: Green's table and the coil model of the
+    predictor's maps (``coil_model``; the default when None) on both, the mean plasma shape of
+    the split's training list on DIII-D only."""
     table = predictors.green_table(args.green_dir, machine)
-    scales = cf.adopted_scales(machine, table.columns)
+    scales = cf.adopted_scales(machine, table.columns, coil_model)
     mean_shape = None
     if machine == "DIII-D":
         path = predictors.model_files(args.cache_dir, sorted(sp.read_split(args.split)["train"]))["mean_shape"]
@@ -177,20 +178,28 @@ def cmd_build(args) -> int:
     if (sub_dir / f"{sub.TEST_CONFIGS['DIII-D']}.npz").exists() and not args.overwrite:
         log(f"{sub_dir} already holds a build; pass --overwrite to rebuild")
         return 1
+    extra = {}
+    if args.mast_coil_model is not None:
+        if args.predictor != "mean_current_v0":
+            log("--mast-coil-model applies to mean_current_v0 only (baseline_v0 and coil_only_v0 keep MAST unit)")
+            return 2
+        extra["coil_models"] = {"MAST": args.mast_coil_model}
     predictor = sub.make_predictor(args.predictor, split_path=args.split, cache_dir=args.cache_dir, green_dir=args.green_dir,
-                                   table_root=args.table_root, data_root=args.data_root)
+                                   table_root=args.table_root, data_root=args.data_root, **extra)
     identifiers = predictor.setup(log)
+    coil_models = identifiers.get("coil_models", {})
     medians = predictors.training_scalar_medians(args.split, args.cache_dir, args.table_root)
     record = {"run": args.run, "name": args.name, "built_at": now(), "repo_commit": starter_kit.git_commit(REPO_ROOT),
               "starter_commit": starter_kit.git_commit(starter_kit.starter_dir()), "args": " ".join(sys.argv[1:]),
               "split_file": str(args.split), "predictor": args.predictor, "predictor_identifiers": identifiers,
-              "fallback_scalar_medians": medians, "data_root": str(args.data_root), "folds": {}, "files": {}}
+              "fallback_scalar_medians": medians, "data_root": str(args.data_root), "coil_models": coil_models,
+              "folds": {}, "files": {}}
     table_mast = predictors.green_table(args.green_dir, "MAST")
     for machine in MACHINES:
         files = fold_files(args, machine)
         if args.max_shots:
             files = files[:args.max_shots]
-        fallbacks = fallback_resources(args, machine, medians)
+        fallbacks = fallback_resources(args, machine, medians, coil_models.get(machine))
         check = (lambda i, shot: sub.mast_shot_checks(shot, table_mast, fallbacks.scales)) if machine == "MAST" else None
         path = sub_dir / f"{sub.TEST_CONFIGS[machine]}.npz"
         log(f"{machine}: predicting {len(files)} shots with {args.predictor}")
@@ -376,6 +385,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date", default=date.today().isoformat())
     p.add_argument("--max-shots", type=int, default=0, help="cap shots per fold for a smoke run (0 = all)")
     p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--mast-coil-model", default=None, choices=cf.coil_model_names("MAST"),
+                   help="MAST coil model of mean_current_v0 (its default otherwise; MAST unit reproduces 2026-10-14)")
     add_common(p)
     p.set_defaults(func=cmd_build)
 

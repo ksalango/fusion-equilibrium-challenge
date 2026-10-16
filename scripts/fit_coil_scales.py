@@ -43,7 +43,7 @@ import pandas as pd
 
 from fusion_eq import coil_scales as cs, io, split as sp, starter_kit
 from fusion_eq.coil_flux import (ADOPTED_FILES, GEOMETRY_COLUMNS, CoilGeometry, CoilScales, GreenTable,
-                                 adopted_scales, currents_at_frames, near_coil_mask)
+                                 adopted_scales, coil_model_names, currents_at_frames, near_coil_mask)
 from fusion_eq.dataset import REPO_ROOT, default_data_root, filter_shots, list_shots, run_info, select_shots
 from fusion_eq.frame_table import DEFAULT_TABLE_ROOT
 from fusion_eq.machines import machine_config
@@ -136,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shot-index", type=Path, default=DEFAULT_SHOT_INDEX,
                         help="shot_index.parquet of the frame-table build the reference shots are chosen from")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--mast-coil-model", default=None, choices=coil_model_names("MAST"),
+                        help="MAST coil model of the K9 ratios (the default model; unit for F53)")
     parser.add_argument("--n-shots", type=int, default=50, help="DIII-D training shots for the fit")
     parser.add_argument("--split", type=Path, default=DEFAULT_SPLIT,
                         help="split file whose validation list the check of the adopted model draws from")
@@ -262,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         mtable = GreenTable.load(args.green_dir / f"green_{mcfg.file_prefix.split('_')[0]}.npz")
         if machine == "MAST":
             mast_table = mtable
-        model = adopted if machine == "DIII-D" else adopted_scales(machine, mtable.columns)
+        model = adopted if machine == "DIII-D" else adopted_scales(machine, mtable.columns, args.mast_coil_model)
         for path in select_shots(list_shots(args.data_root, split), n, args.seed + 1):
             shot = io.load_shot(path, [*mtable.columns, mcfg.ip_column, "efit_times", "magnetics_time",
                                        "magnetics_plasma_current_times"])

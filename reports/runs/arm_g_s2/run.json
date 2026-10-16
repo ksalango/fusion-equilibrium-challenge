@@ -1,0 +1,518 @@
+{
+  "run_id": "arm_g_s2",
+  "timestamp": "2026-10-15T08:28:24+00:00",
+  "argv": [
+    "--config",
+    "configs/model/arm_g.yaml",
+    "--seed",
+    "2",
+    "--run-id",
+    "arm_g_s2",
+    "--no-score"
+  ],
+  "repo_commit": "64d128ebfbd029545619ea24f935ce16ac87af20",
+  "starter_commit": null,
+  "config": {
+    "version": 1,
+    "features": {
+      "version": 2,
+      "set": "set_a",
+      "drop_groups": []
+    },
+    "loader": {
+      "mirror": true,
+      "thomson_mask_rate": 0.03,
+      "clip_bound": 10.0,
+      "require_boundary": true,
+      "tail_weights": false,
+      "tail_columns": [
+        "shaping",
+        "ts_beta_p"
+      ],
+      "tail_quantile": 0.9,
+      "tail_weight": 2.0
+    },
+    "loss": {
+      "reference": "basis",
+      "band_cells": 2,
+      "frame_gamma": 2.0,
+      "phase_weights": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "norm_frames": 10000,
+      "norm_seed": 0,
+      "terms": {
+        "flux": {
+          "enabled": true,
+          "weight": 1.0
+        },
+        "grad": {
+          "enabled": true,
+          "weight": 1.0
+        },
+        "band": {
+          "enabled": true,
+          "weight": 1.0
+        },
+        "contour": {
+          "enabled": false,
+          "weight": 1.0,
+          "stride": 1
+        },
+        "li_term": {
+          "enabled": false,
+          "weight": 1.0,
+          "stride": 1
+        },
+        "coeff": {
+          "enabled": false,
+          "weight": 1.0,
+          "components": [],
+          "component_weights": []
+        }
+      }
+    },
+    "model": {
+      "name": "linear_mlp",
+      "hidden": [
+        512,
+        512,
+        512
+      ],
+      "activation": "gelu",
+      "dropout": 0.1,
+      "warm_start": true,
+      "warm_start_alpha": 1.0,
+      "bounded": false,
+      "bound": 3.0
+    },
+    "rung2": {
+      "name": "gru_seq",
+      "hidden": 256,
+      "layers": 2,
+      "causal": true,
+      "bidirectional": false,
+      "dropout": 0.1,
+      "head_hidden": [
+        256
+      ],
+      "tcn_kernel": 3,
+      "tcn_levels": 4,
+      "dt_scale_ms": 20.0,
+      "batch_shots": 64
+    },
+    "train": {
+      "seed": 2,
+      "batch_frames": 16384,
+      "max_epochs": 200,
+      "patience": 15,
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "warmup_epochs": 5,
+      "grad_clip": 1.0
+    },
+    "scoring": {
+      "stride": 4,
+      "scalars": "ridge_signed",
+      "corner_q_cyl_quantile": 0.1,
+      "corner_beta_p_quantile": 0.5,
+      "corner_beta_p_relaxed": 0.75,
+      "corner_min_frames": 300
+    },
+    "predict": {
+      "mirror_average": true,
+      "seed_average": false
+    },
+    "scalars": {
+      "q95": "map",
+      "betan_d3d": "ridge_raw",
+      "betan_mast": "formula_gbm",
+      "stage2_refit": true
+    },
+    "optuna": {
+      "seed": 0,
+      "max_epochs": 60,
+      "space": {
+        "train.lr": {
+          "type": "log_float",
+          "low": 0.0001,
+          "high": 0.003
+        },
+        "train.weight_decay": {
+          "type": "log_float",
+          "low": 1e-06,
+          "high": 0.01
+        },
+        "model.dropout": {
+          "type": "float",
+          "low": 0.0,
+          "high": 0.3
+        },
+        "model.depth": {
+          "type": "int",
+          "low": 2,
+          "high": 4
+        },
+        "model.width": {
+          "type": "categorical",
+          "choices": [
+            256,
+            512,
+            1024
+          ]
+        }
+      }
+    }
+  },
+  "config_hash": "1f3795dc82561faa0c28e01b9c43c4c89740df2471afbe0ef193690968ec73f2",
+  "config_sources": [
+    "/workspace/fusion-equilibrium-challenge/configs/model/base.yaml",
+    "/workspace/fusion-equilibrium-challenge/configs/model/arm_g.yaml"
+  ],
+  "lists": {
+    "train": "train",
+    "validation": "validation"
+  },
+  "seed": 2,
+  "device": "cuda",
+  "python": "3.12.3",
+  "torch": "2.14.1+cu130",
+  "environment": [
+    "aiohappyeyeballs==2.7.1",
+    "aiohttp==3.14.3",
+    "aiosignal==1.4.0",
+    "alembic==1.20.0",
+    "anyio==4.14.2",
+    "appnope==1.0.0",
+    "argon2-cffi==25.1.0",
+    "argon2-cffi-bindings==26.1.0",
+    "arrow==1.4.0",
+    "asttokens==3.0.2",
+    "async-lru==2.3.0",
+    "attrs==26.1.0",
+    "babel==2.18.0",
+    "beautifulsoup4==4.15.0",
+    "bleach==6.4.0",
+    "certifi==2026.7.22",
+    "cffi==2.1.1",
+    "charset-normalizer==3.5.1",
+    "click==8.5.0",
+    "colorlog==6.12.0",
+    "comm==0.2.3",
+    "contourpy==1.3.3",
+    "cuda-bindings==13.4.4",
+    "cuda-pathfinder==1.8.3",
+    "cuda-toolkit==13.0.3.0",
+    "cycler==0.12.1",
+    "datasets==5.0.1",
+    "debugpy==1.8.21",
+    "defusedxml==0.7.1",
+    "dill==0.4.1",
+    "executing==2.2.1",
+    "fastjsonschema==2.22.2",
+    "filelock==4.0.1",
+    "fonttools==4.63.0",
+    "fqdn==1.5.1",
+    "frozenlist==1.8.0",
+    "fsspec==2026.6.0",
+    "fusion-eq==0.1.0",
+    "h11==0.16.0",
+    "hf-xet==1.6.0",
+    "httpcore==1.0.9",
+    "httpx==0.28.1",
+    "huggingface_hub==1.32.0",
+    "idna==3.19",
+    "imageio==2.37.4",
+    "iniconfig==2.3.0",
+    "ipykernel==7.3.0",
+    "ipython==9.16.1",
+    "ipython_pygments_lexers==1.1.1",
+    "ipywidgets==8.1.9",
+    "isoduration==20.11.0",
+    "jedi==0.20.0",
+    "jinja2==3.1.6",
+    "joblib==1.5.3",
+    "json5==0.15.0",
+    "jsonpointer==3.1.1",
+    "jsonschema==4.26.0",
+    "jsonschema-specifications==2025.9.1",
+    "jupyter==1.1.1",
+    "jupyter-console==6.6.3",
+    "jupyter-events==0.12.1",
+    "jupyter-lsp==2.3.1",
+    "jupyter_builder==1.2.2",
+    "jupyter_client==8.9.1",
+    "jupyter_core==5.9.1",
+    "jupyter_server==2.20.0",
+    "jupyter_server_terminals==0.5.4",
+    "jupyterlab==4.6.3",
+    "jupyterlab_pygments==0.3.0",
+    "jupyterlab_server==2.28.0",
+    "jupyterlab_widgets==3.0.17",
+    "kiwisolver==1.5.0",
+    "lark==1.3.1",
+    "lazy-loader==0.5",
+    "mako==1.4.3",
+    "markupsafe==3.0.3",
+    "matplotlib==3.11.1",
+    "matplotlib-inline==0.2.2",
+    "mistune==3.3.4",
+    "mpmath==1.3.0",
+    "multidict==6.9.0",
+    "multiprocess==0.70.19",
+    "narwhals==2.25.0",
+    "nbclient==0.11.0",
+    "nbconvert==7.17.1",
+    "nbformat==5.11.1",
+    "nest-asyncio2==1.7.2",
+    "networkx==3.6.1",
+    "notebook==7.6.2",
+    "notebook_shim==0.2.4",
+    "numpy==2.5.2",
+    "nvidia-cublas==13.1.1.3",
+    "nvidia-cuda-cupti==13.0.85",
+    "nvidia-cuda-nvrtc==13.0.88",
+    "nvidia-cuda-runtime==13.0.96",
+    "nvidia-cudnn-cu13==9.24.0.43",
+    "nvidia-cufft==12.0.0.61",
+    "nvidia-cufile==1.15.1.6",
+    "nvidia-curand==10.4.0.35",
+    "nvidia-cusolver==12.0.4.66",
+    "nvidia-cusparse==12.6.3.3",
+    "nvidia-cusparselt-cu13==0.8.1",
+    "nvidia-nccl-cu13==2.30.7",
+    "nvidia-nvjitlink==13.4.92",
+    "nvidia-nvshmem-cu13==3.4.5",
+    "nvidia-nvtx==13.0.85",
+    "optuna==5.0.0",
+    "packaging==26.3",
+    "pandas==3.0.5",
+    "pandocfilters==1.5.1",
+    "parso==0.8.7",
+    "pexpect==4.9.0",
+    "pillow==12.3.0",
+    "pip==24.0",
+    "platformdirs==4.11.3",
+    "plotly==6.9.0",
+    "pluggy==1.6.0",
+    "prometheus_client==0.26.0",
+    "prompt_toolkit==3.0.53",
+    "propcache==0.5.4",
+    "psutil==7.2.2",
+    "ptyprocess==0.7.0",
+    "pure_eval==0.2.3",
+    "pyarrow==25.0.1",
+    "pycparser==3.0",
+    "pygments==2.21.0",
+    "pyparsing==3.3.2",
+    "pytest==9.1.1",
+    "python-dateutil==2.9.0.post0",
+    "python-json-logger==4.2.0",
+    "pyyaml==6.0.3",
+    "pyzmq==27.2.0",
+    "referencing==0.37.0",
+    "requests==2.34.2",
+    "rfc3339-validator==0.1.4",
+    "rfc3986-validator==0.1.1",
+    "rfc3987-syntax==1.1.0",
+    "rpds-py==2026.6.3",
+    "scikit-image==0.26.0",
+    "scikit-learn==1.9.0",
+    "scipy==1.18.1",
+    "send2trash==2.1.0",
+    "setuptools==84.0.0",
+    "six==1.17.0",
+    "soupsieve==2.9.2",
+    "sqlalchemy==2.1.4",
+    "stack-data==0.6.3",
+    "sympy==1.14.0",
+    "terminado==0.18.1",
+    "threadpoolctl==3.6.0",
+    "tifffile==2026.9.20",
+    "tinycss2==1.5.1",
+    "torch==2.14.1",
+    "tornado==6.5.8",
+    "tqdm==4.70.1",
+    "traitlets==5.16.1",
+    "triton==3.8.0",
+    "typing_extensions==4.16.0",
+    "tzdata==2026.3",
+    "uri-template==1.3.0",
+    "urllib3==2.7.0",
+    "wcwidth==0.8.2",
+    "webcolors==25.10.0",
+    "webencodings==0.6.1",
+    "websocket-client==1.9.0",
+    "widgetsnbextension==4.0.16",
+    "xxhash==4.0.1",
+    "yarl==1.25.1"
+  ],
+  "data_hashes": {
+    "frame_table": "8106ac6c662f5a2b067954bd12428b8bbcc7b1b780b11b0cc2c79015e0c13760",
+    "features_v2": "fe19d3547717f723fd19e3e36c6784ca027f6040589dd6b849bcb7c33b991d09",
+    "features_v2_scaler": "a9c7ca1ba2012c91f1e55460601250bc28151ebb0f79d3d490f8f59d08fbc3e7",
+    "targets_v1": "62a136cff175b0688982e28d531de6dd5fff69f47773a3a4a4c69bb24e62d27e",
+    "loss_inputs": "11864945e67a0e04cc59f4b3a7b887a3fcf1d7629ea18781f33090cf899f1edd"
+  },
+  "machine_constants": {
+    "DIII-D": {
+      "major_radius": {
+        "value": 1.67,
+        "units": "m",
+        "source": "National Academies of Sciences, Engineering, and Medicine (2019), Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G",
+        "verified": true
+      },
+      "minor_radius": {
+        "value": 0.67,
+        "units": "m",
+        "source": "National Academies of Sciences, Engineering, and Medicine (2019), Final Report of the Committee on a Strategic Plan for U.S. Burning Plasma Research, Appendix G",
+        "verified": true
+      },
+      "tf_turns": {
+        "value": 144.0,
+        "units": "turns",
+        "source": "Confirmed from the data: q95 calculated from the map against the label, median ratio 0.997 (F74)",
+        "verified": true
+      }
+    }
+  },
+  "n_frames": {
+    "train": 1286602,
+    "validation": 191150,
+    "validation_no_near_repeat": 58564
+  },
+  "model": {
+    "name": "linear_mlp",
+    "rung": 1,
+    "sequence": false,
+    "uses_future": false,
+    "init_args": {
+      "n_in": 29,
+      "n_out": 50,
+      "hidden": [
+        512,
+        512,
+        512
+      ],
+      "activation": "gelu",
+      "dropout": 0.1,
+      "bounded": false,
+      "bound": 3.0
+    },
+    "n_parameters": 567822
+  },
+  "features": {
+    "columns": [
+      "coil_pt_00",
+      "coil_pt_01",
+      "coil_pt_02",
+      "coil_pt_03",
+      "coil_pt_04",
+      "coil_pt_05",
+      "coil_pt_06",
+      "coil_pt_07",
+      "coil_pt_08",
+      "coil_pt_09",
+      "coil_pt_10",
+      "coil_pt_11",
+      "coil_pt_12",
+      "coil_pt_13",
+      "coil_pt_14",
+      "coil_pt_15",
+      "coil_pt_16",
+      "coil_pt_17",
+      "coil_pt_18",
+      "coil_pt_19",
+      "coil_pt_20",
+      "coil_pt_21",
+      "ts_beta_p",
+      "ts_pe_peaking",
+      "ts_valid",
+      "q_cyl",
+      "ip_frac",
+      "ip_rate_rel",
+      "resistive_age"
+    ],
+    "thomson_columns": [
+      "ts_beta_p",
+      "ts_pe_peaking",
+      "ts_valid"
+    ]
+  },
+  "ip_med_a": 990467.28515625,
+  "tail_rule": null,
+  "normalization": {
+    "constants": {
+      "flux": 0.0006290575981140136,
+      "grad": 0.006570188903808594,
+      "band": 0.00039962663650512696
+    },
+    "n_frames": 10000,
+    "seed": 0
+  },
+  "early_stopping": {
+    "monitor": "validation no-near-repeat total loss",
+    "best_epoch": 188,
+    "best_value": 0.19465915414601503,
+    "stopped_epoch": 199,
+    "stopped_early": false,
+    "patience": 15,
+    "max_epochs": 200
+  },
+  "warm_start": {
+    "enabled": true,
+    "alpha": 1.0,
+    "n_frames": 1286602,
+    "validation_loss": {
+      "all": {
+        "flux": 0.22850413921890392,
+        "grad": 0.2798493607659019,
+        "band": 0.17576540582569727,
+        "total": 0.684118905810503,
+        "n_frames": 191150
+      },
+      "subset": {
+        "flux": 0.27932144056723957,
+        "grad": 0.3372105845434993,
+        "band": 0.19359920912588235,
+        "total": 0.8101312342366211,
+        "n_frames": 58564
+      }
+    }
+  },
+  "best": {
+    "validation_loss": {
+      "all": {
+        "flux": 0.038935644079137105,
+        "grad": 0.054276091950318864,
+        "band": 0.03108708867177201,
+        "total": 0.12429882470122798,
+        "n_frames": 191150
+      },
+      "subset": {
+        "flux": 0.06301478783253699,
+        "grad": 0.08600785608898262,
+        "band": 0.04563651022449544,
+        "total": 0.19465915414601503,
+        "n_frames": 58564
+      }
+    },
+    "score": null
+  },
+  "scorer": null,
+  "checkpoints": {
+    "dir": "/workspace/data/runs/arm_g_s2",
+    "best_sha256": "f2a637dfa79996582f17ecf8adbd160e8374e381984301aa4e6e27a324283c9a",
+    "warm_sha256": "5692e4230ef82c00eb1682271ecf08f1fbe45dd16c14562704084b518751bfdf",
+    "last_sha256": "1b17465033a8d72b172cfe3ce3cf4c3edd593e00be41053976b00cb79a744929"
+  },
+  "timing": {
+    "load_s": 14.138074398040771,
+    "normalization_s": 1.4311542510986328,
+    "warm_start_s": 1.0971238613128662,
+    "training_s": 1247.2236671447754,
+    "total_s": 1264.5545270442963
+  }
+}

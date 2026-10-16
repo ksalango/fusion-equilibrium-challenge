@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from fusion_eq import (features as fe, loader as ld, plasma_models as pm, prediction as pr, scalar_heads as sh, starter_kit,
-                       submission as sub, target_build as tb)
+                       submission as sub, target_build as tb, targets)
 from fusion_eq.coil_flux import adopted_scales
 from fusion_eq.model_config import DEFAULT_BASE, ModelConfig
 from tests.test_build_features import REPO_ROOT, make_workspace
@@ -353,3 +353,85 @@ def predictor_paths(ws: dict) -> dict:
     return {"split_path": ws["split"], "green_dir": ws["green"], "table_root": ws["table_dir"], "data_root": ws["data"],
             "feature_root": ws["features"], "scaler": ws["scaler"], "targets_root": ws["targets"], "checkpoint_root": root / "ckpt",
             "source": "tables"}
+
+
+# --------------------------------------------------------------------- MAST coil models
+@pytest.fixture(scope="module")
+def unit_mast(ws) -> Path:
+    """A variant build of the MAST features under the unit coil model (the workspace's version-2
+    build uses each machine's default, MAST ``sol_half``); returns its folder."""
+    root = ws["root"]
+    result = run_script("build_features.py", "--config", FEATURES_V2, "--data-root", ws["data"], "--table-dir", ws["table_dir"],
+                        "--green-dir", ws["green"], "--split", ws["split"], "--out", ws["features"], "--report-root",
+                        root / "feature_reports", "--splits", "mast_public_test", "--coil-model", "MAST=unit", "--variant", "unit")
+    assert result.returncode == 0, result.stderr
+    folder = fe.features_dir(2, ws["features"], "unit")
+    assert fe.build_coil_model(folder, "MAST") == "unit" and fe.build_coil_model(fe.features_dir(2, ws["features"]), "MAST") == "sol_half"
+    return folder
+
+
+def test_the_chain_takes_the_coil_model_of_each_feature_build(ws, unit_mast):
+    from dataclasses import replace
+    root = ws["root"]
+    paths = chain_paths(ws, root)
+    half, rec_half = pr.build_chain([RUN_ID], paths)
+    unit, rec_unit = pr.build_chain([RUN_ID], replace(paths, feature_dirs={"MAST": unit_mast}))
+    assert rec_half["coil_models"] == {"DIII-D": "solenoid_flat", "MAST": "sol_half"} == rec_half["feature_coil_models"]
+    assert rec_unit["coil_models"] == {"DIII-D": "solenoid_flat", "MAST": "unit"} == rec_unit["feature_coil_models"]
+    assert rec_unit["coil_model_sources"]["MAST"] == "feature build record" and rec_unit["feature_dirs"]["MAST"] == str(unit_mast)
+    assert rec_unit["coil_scales"]["MAST"]["name"] == "unit" and rec_half["coil_scales"]["MAST"]["scales"]["magnetics_sol_current"] == 0.5
+
+    columns = {m: half.frame_columns(m) for m in pr.MACHINES}
+    rows_half = pr.TableSource(ws["table_dir"], ws["features"], 2, columns, half.feature_columns()).rows("mast_public_test", "m1")
+    source_unit = pr.TableSource(ws["table_dir"], ws["features"], 2, columns, half.feature_columns(), {"MAST": unit_mast})
+    rows_unit = source_unit.rows("mast_public_test", "m1")
+    assert source_unit.feature_dir("MAST") == unit_mast and source_unit.feature_dir("DIII-D") == fe.features_dir(2, ws["features"])
+    coil_pt = [c for c in rows_half.columns if c.startswith("coil_pt_")]
+    assert coil_pt and not np.allclose(rows_half[coil_pt].to_numpy(), rows_unit[coil_pt].to_numpy())
+    # With the plasma coefficients at zero the two maps differ by half the solenoid's flux.
+    zero = np.zeros((len(rows_half), half.coefficients.sigma.size))
+    psi_half = half.predict(rows_half, "MAST", with_scalars=False, c_std=zero).psi
+    psi_unit = unit.predict(rows_unit, "MAST", with_scalars=False, c_std=zero).psi
+    table = half.composer.tables["MAST"]
+    sol = list(table.columns).index("magnetics_sol_current")
+    currents = np.zeros((len(rows_half), len(table.columns)))
+    currents[:, sol] = np.nan_to_num(rows_half["sol__mean"].to_numpy(dtype=np.float64))
+    expected = targets.to_stored(0.5 * table.flux(currents), rows_half["ip__mean"].to_numpy(dtype=np.float64), "MAST")
+    assert np.abs(expected).max() > 0
+    np.testing.assert_allclose(psi_unit - psi_half, expected, rtol=1e-9, atol=1e-12 * np.abs(psi_half).max())
+    # DIII-D is untouched by the MAST folder.
+    rows_d = pr.TableSource(ws["table_dir"], ws["features"], 2, columns, half.feature_columns()).rows("diii_d_public_test", "t1")
+    np.testing.assert_array_equal(half.predict(rows_d, "DIII-D", with_scalars=False).psi, unit.predict(rows_d, "DIII-D", with_scalars=False).psi)
+
+    # A named model that differs from the feature build is refused unless the mismatch is allowed.
+    with pytest.raises(ValueError, match="differs from 'unit'"):
+        pr.build_chain([RUN_ID], replace(paths, feature_dirs={"MAST": unit_mast}), coil_models={"MAST": "sol_half"})
+    _, rec = pr.build_chain([RUN_ID], replace(paths, feature_dirs={"MAST": unit_mast}), coil_models={"MAST": "sol_half"},
+                            allow_coil_model_mismatch=True)
+    assert rec["coil_models"]["MAST"] == "sol_half" and rec["feature_coil_models"]["MAST"] == "unit"
+    assert "differs" in rec["coil_model_sources"]["MAST"]
+
+
+def test_predict_on_the_variant_mast_features_records_the_coil_model(ws, unit_mast, tmp_path):
+    root = ws["root"]
+    result = run_script("predict.py", *predict_args(ws, "--machines", "mast", "--mast-feature-dir", unit_mast, "--name", "unit",
+                                                    "--date", "d", "--no-score-local", "--max-shots", "1"))
+    assert result.returncode == 0, result.stderr + result.stdout
+    record = json.loads((root / "reports" / "d_unit" / "run.json").read_text())
+    assert record["coil_models"] == {"DIII-D": "solenoid_flat", "MAST": "unit"}
+    assert record["feature_dirs"]["MAST"] == str(unit_mast) and record["coil_model_sources"]["MAST"] == "feature build record"
+    assert record["predictor_identifiers"]["coil_scales"]["MAST"]["name"] == "unit"
+    assert record["folds"]["MAST"]["n_predictor_errors"] == 0
+    # A MAST model that differs from the folder's record stops the build.
+    result = run_script("predict.py", *predict_args(ws, "--machines", "mast", "--mast-feature-dir", unit_mast, "--mast-coil-model",
+                                                    "sol_half", "--name", "mismatch", "--date", "d", "--no-score-local"))
+    assert result.returncode != 0 and "differs from 'unit'" in result.stderr
+    # Z5 on the variant path: tables twice and raw, byte-identical, under the recorded model.
+    shots = tmp_path / "shots.json"
+    shots.write_text(json.dumps({"diii_d_train": ["a1"], "mast_public_test": ["m1"]}))
+    result = run_script("predict.py", *predict_args(ws, "--determinism", "--shots-file", shots, "--report-dir", tmp_path / "det",
+                                                    "--mast-feature-dir", unit_mast))
+    assert result.returncode == 0, result.stderr + result.stdout
+    info = json.loads((tmp_path / "det" / "prediction_check.json").read_text())
+    assert info["pass"] and info["coil_models"]["MAST"] == "unit" and info["feature_dirs"]["MAST"] == str(unit_mast)
+    assert info["sources"]["raw"]["feature_coil_models"]["MAST"] == "unit"

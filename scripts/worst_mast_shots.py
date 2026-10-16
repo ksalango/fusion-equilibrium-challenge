@@ -40,6 +40,7 @@ import pandas as pd
 
 from fusion_eq import (dataset, feature_checks as fc, features as fe, frame_table as ft, predictors, target_build as tb,
                        target_checks as tc, targets)
+from fusion_eq import coil_flux as cf
 from fusion_eq.coil_flux import adopted_scales
 
 DEFAULT_RUN = "2026-10-14_mean_current_v0"
@@ -334,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rest-shots", type=int, default=100, help="shots of the rest sampled for the boundary")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, default=None, help="default: <reports-dir>/<run>/worst_mast_shots.md")
+    parser.add_argument("--mast-coil-model", default=None, choices=cf.coil_model_names("MAST"),
+                        help="coil model of the mean-current maps; the run record's (unit for records without one)")
     args = parser.parse_args(argv)
     started = time.time()
 
@@ -367,7 +370,9 @@ def main(argv: list[str] | None = None) -> int:
     if objects.record.get("config_hash") != config.hash():
         raise ValueError(f"the target build in {folder} was made with another configuration than {args.target_config}")
     table = predictors.green_table(args.green_dir, MACHINE)
-    scales = adopted_scales(MACHINE, table.columns)
+    # The submission's own model: every record written before the models were named is unit.
+    coil_model = args.mast_coil_model or record.get("coil_models", {}).get(MACHINE, cf.UNIT_MODEL)
+    scales = adopted_scales(MACHINE, table.columns, coil_model)
     current = targets.current_columns_of(table, MACHINE)
     ft.assert_input_columns(current, MACHINE)
     currents = ft.read_frame_table(SPLIT, list(dict.fromkeys(["shot", "frame", *current, "ip__mean"])), root=args.table_dir)

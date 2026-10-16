@@ -1,0 +1,355 @@
+{
+  "version": 2,
+  "config_hash": "01263fe0c4f154d2a9090cb42b4198652f0bb117bf921126580afbb7c4387568",
+  "split_file": "splits/split_v1.json",
+  "builds": {
+    "mast_base": {
+      "folder": "../data/processed/features/v2",
+      "config_hash": "01263fe0c4f154d2a9090cb42b4198652f0bb117bf921126580afbb7c4387568",
+      "coil_model": "unit",
+      "repo_commit": "e596e2b65f07bff88e6eb639c26a1ac7e5817da4",
+      "built_at": "2026-10-14T01:56:12+00:00"
+    },
+    "mast_variant": {
+      "folder": "../data/processed/features/v2_solhalf",
+      "config_hash": "01263fe0c4f154d2a9090cb42b4198652f0bb117bf921126580afbb7c4387568",
+      "coil_model": "sol_half",
+      "repo_commit": "64d128ebfbd029545619ea24f935ce16ac87af20",
+      "built_at": "2026-10-16T02:50:43+00:00"
+    }
+  },
+  "x10": {
+    "n_train_sample": 200000,
+    "n_eval": {
+      "DIII-D validation": 5000,
+      "MAST, unit": 5000,
+      "MAST, sol_half": 5000
+    }
+  },
+  "unchanged_failing": [],
+  "timestamp": "2026-10-16T02:51:22+00:00",
+  "repo_commit": "64d128ebfbd029545619ea24f935ce16ac87af20",
+  "starter_commit": "5b467988d2e5f28e20be490a926d0a71649de28d",
+  "args": "--variant solhalf",
+  "arguments": {
+    "variant": "solhalf",
+    "config": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/configs/features_v2.yaml",
+    "split": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/splits/split_v1.json",
+    "feature_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/features",
+    "report_root": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/fusion-equilibrium-challenge/reports/features",
+    "table_dir": "/Users/kamia/Desktop/PROJECTS/fusion-challenge/data/processed/frame_table",
+    "nn_train_frames": 200000,
+    "nn_eval_frames": 5000,
+    "seed": 0
+  },
+  "runtime_s": 10.208399057388306,
+  "python": "3.13.15",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "verdicts": [
+    {
+      "check": "X8 coil_c10: median shift (training IQR)",
+      "base": -1.2575354961830132,
+      "variant": -1.7678841144878634,
+      "moves": "away"
+    },
+    {
+      "check": "X8 coil_c10: share outside the training band",
+      "base": 0.03106768005790807,
+      "variant": 0.12980094100615272,
+      "moves": "away"
+    },
+    {
+      "check": "X8 coil_c20: median shift (training IQR)",
+      "base": -3.974207371282315,
+      "variant": -3.965572617339178,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 coil_c20: share outside the training band",
+      "base": 0.8741657618530583,
+      "variant": 0.8739775606225118,
+      "moves": "unchanged"
+    },
+    {
+      "check": "X8 coil_c02: median shift (training IQR)",
+      "base": -2.278976396582313,
+      "variant": -3.119316170815482,
+      "moves": "away"
+    },
+    {
+      "check": "X8 coil_c02: share outside the training band",
+      "base": 0.69252262034021,
+      "variant": 0.952066594281578,
+      "moves": "away"
+    },
+    {
+      "check": "X8 coil_c30: median shift (training IQR)",
+      "base": 1.416725470279631,
+      "variant": 1.2698970332341477,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 coil_c30: share outside the training band",
+      "base": 0.2717915309446254,
+      "variant": 0.21624321389793702,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 coil_c12: median shift (training IQR)",
+      "base": 1.7643336674653842,
+      "variant": 1.4856129779800076,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 coil_c12: share outside the training band",
+      "base": 0.0052406804198335145,
+      "variant": 0.013246471226927252,
+      "moves": "away"
+    },
+    {
+      "check": "X8 shaping: median shift (training IQR)",
+      "base": 1.5855227291466432,
+      "variant": 1.1122335836847812,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 shaping: share outside the training band",
+      "base": 0.38765110387260227,
+      "variant": 0.242880926529135,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 shafranov_lambda: median shift (training IQR)",
+      "base": -0.2524238290425537,
+      "variant": 0.015327018915807946,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 shafranov_lambda: share outside the training band",
+      "base": 0.0016069489685124863,
+      "variant": 0.0013029315960912053,
+      "moves": "toward"
+    },
+    {
+      "check": "X8 vacuum_residual: median shift (training IQR)",
+      "base": -4.199295774010726,
+      "variant": -4.352009058773082,
+      "moves": "away"
+    },
+    {
+      "check": "X8 vacuum_residual: share outside the training band",
+      "base": 0.9702642055736518,
+      "variant": 0.9742453854505971,
+      "moves": "away"
+    },
+    {
+      "check": "X8 ip_rate_rel: median shift (training IQR)",
+      "base": -0.08656469700742657,
+      "variant": -0.08656469700742657,
+      "moves": "unchanged"
+    },
+    {
+      "check": "X8 ip_rate_rel: share outside the training band",
+      "base": 0.19057415644060677,
+      "variant": 0.19057415644060677,
+      "moves": "unchanged"
+    },
+    {
+      "check": "X14 slope over DIII-D training (all)",
+      "base": 0.518082024634672,
+      "variant": 0.7487091619883249,
+      "moves": "toward"
+    },
+    {
+      "check": "X14 median offset from the training line (all)",
+      "base": -0.1744213285175803,
+      "variant": -0.06731904012080814,
+      "moves": "toward"
+    },
+    {
+      "check": "X14 slope over DIII-D training (flat_top)",
+      "base": 0.644199203479619,
+      "variant": 0.7003781773595976,
+      "moves": "toward"
+    },
+    {
+      "check": "X14 median offset from the training line (flat_top)",
+      "base": -0.15072057984992004,
+      "variant": -0.040833059412448414,
+      "moves": "toward"
+    },
+    {
+      "check": "vacuum residual over coil_c20 (DIII-D training 0.028)",
+      "base": 0.0808104187312138,
+      "variant": 0.08319670268409762,
+      "moves": "away"
+    },
+    {
+      "check": "X10 set_a: median distance",
+      "base": 0.9607079997041436,
+      "variant": 1.0843099738068207,
+      "moves": "away"
+    },
+    {
+      "check": "X10 set_b: median distance",
+      "base": 2.7127533852791657,
+      "variant": 2.3771042661383195,
+      "moves": "toward"
+    }
+  ],
+  "x14": [
+    {
+      "frames": "all",
+      "split": "DIII-D train",
+      "n": 1225650,
+      "slope": 2.9640906240358023,
+      "slope over training": 1.0,
+      "intercept": 0.47345591923954405,
+      "r": 0.7355222867768622,
+      "residual std": 0.22850778860302348,
+      "median offset from training line": -0.00629959713476369
+    },
+    {
+      "frames": "all",
+      "split": "MAST, unit",
+      "n": 65972,
+      "slope": 1.5356420717011168,
+      "slope over training": 0.518082024634672,
+      "intercept": 0.4655349979695947,
+      "r": 0.6065827606883086,
+      "residual std": 0.10910441549297513,
+      "median offset from training line": -0.1744213285175803
+    },
+    {
+      "frames": "all",
+      "split": "MAST, sol_half",
+      "n": 66045,
+      "slope": 2.2192418071792965,
+      "slope over training": 0.7487091619883249,
+      "intercept": 0.5025676766879028,
+      "r": 0.7192501744879395,
+      "residual std": 0.11565105533610337,
+      "median offset from training line": -0.06731904012080814
+    },
+    {
+      "frames": "flat_top",
+      "split": "DIII-D train",
+      "n": 956349,
+      "slope": 3.0431175842641065,
+      "slope over training": 1.0,
+      "intercept": 0.43630867901855647,
+      "r": 0.7462273945033836,
+      "residual std": 0.22174959054190937,
+      "median offset from training line": -0.00033444413380068205
+    },
+    {
+      "frames": "flat_top",
+      "split": "MAST, unit",
+      "n": 49590,
+      "slope": 1.9603739238777598,
+      "slope over training": 0.644199203479619,
+      "intercept": 0.41770394510938147,
+      "r": 0.7149361689088725,
+      "residual std": 0.09228303917475249,
+      "median offset from training line": -0.15072057984992004
+    },
+    {
+      "frames": "flat_top",
+      "split": "MAST, sol_half",
+      "n": 49567,
+      "slope": 2.1313331471578367,
+      "slope over training": 0.7003781773595976,
+      "intercept": 0.5085601606163327,
+      "r": 0.6968774047136801,
+      "residual std": 0.10586883489156063,
+      "median offset from training line": -0.040833059412448414
+    }
+  ],
+  "residual_ratios": [
+    {
+      "split": "DIII-D train",
+      "phase": "all",
+      "n": 1289467,
+      "ratio": 0.027950338482961228,
+      "ratio for R^4 - 4 R^2 Z^2": 0.02579786379491688
+    },
+    {
+      "split": "DIII-D train",
+      "phase": "rising",
+      "n": 234424,
+      "ratio": 0.030736968528947972,
+      "ratio for R^4 - 4 R^2 Z^2": 0.02579786379491688
+    },
+    {
+      "split": "DIII-D train",
+      "phase": "flat_top",
+      "n": 1002719,
+      "ratio": 0.027257995795717558,
+      "ratio for R^4 - 4 R^2 Z^2": 0.02579786379491688
+    },
+    {
+      "split": "DIII-D train",
+      "phase": "late",
+      "n": 52324,
+      "ratio": 0.026735497624167978,
+      "ratio for R^4 - 4 R^2 Z^2": 0.02579786379491688
+    },
+    {
+      "split": "MAST, base",
+      "phase": "all",
+      "n": 69075,
+      "ratio": 0.0808104187312138,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, base",
+      "phase": "rising",
+      "n": 8971,
+      "ratio": 0.08412477805255016,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, base",
+      "phase": "flat_top",
+      "n": 51915,
+      "ratio": 0.0814736554221146,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, base",
+      "phase": "late",
+      "n": 8189,
+      "ratio": 0.07417768352317375,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, variant",
+      "phase": "all",
+      "n": 69075,
+      "ratio": 0.08319670268409762,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, variant",
+      "phase": "rising",
+      "n": 8971,
+      "ratio": 0.08341897163808518,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, variant",
+      "phase": "flat_top",
+      "n": 51915,
+      "ratio": 0.08407213558871947,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    },
+    {
+      "split": "MAST, variant",
+      "phase": "late",
+      "n": 8189,
+      "ratio": 0.07954730332407482,
+      "ratio for R^4 - 4 R^2 Z^2": 0.06059819735101053
+    }
+  ]
+}

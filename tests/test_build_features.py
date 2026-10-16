@@ -136,3 +136,49 @@ def test_build_features_script_stops_without_part_0_columns(workspace):
     frames.to_parquet(path, index=False)
     result = _run(ws, ws["tmp"] / "f", ws["tmp"] / "r")
     assert result.returncode != 0 and "rebuild the frame table with Part 0" in result.stderr
+
+
+def test_variant_build_under_another_mast_coil_model(workspace):
+    ws = workspace
+    out, reports = ws["tmp"] / "f", ws["tmp"] / "r"
+    assert _run(ws, out, reports).returncode == 0
+    base = json.loads((out / "v1" / "build.json").read_text())
+    assert base["coil_models"] == {"DIII-D": "solenoid_flat", "MAST": "sol_half"} and base["variant"] is None
+    assert base["resources"]["MAST"]["coil_model"]["name"] == base["resources"]["MAST"]["coil_model_name"] == "sol_half"
+    assert fe.build_coil_model(out / "v1", "MAST") == "sol_half" and fe.build_coil_model(out / "v1", "DIII-D") == "solenoid_flat"
+    stored = {s: _sha256(fe.features_path(s, 1, out)) for s in dataset.DATA_SPLITS}
+    scaler = _sha256(reports / "v1" / "scaler.json")
+
+    # The MAST table under the unit model, twice into separate roots: byte-identical (D7), in its
+    # own folder, with no scaler; the version's tables and scaler are untouched.
+    variant = ["--splits", "mast_public_test", "--coil-model", "MAST=unit", "--variant", "unit"]
+    for root in ("f", "g"):
+        result = _run(ws, ws["tmp"] / root, ws["tmp"] / f"r_{root}" if root == "g" else reports, *variant)
+        assert result.returncode == 0, result.stderr
+    path = fe.features_path("mast_public_test", 1, out, "unit")
+    assert path.parent.name == "v1_unit" and _sha256(path) == _sha256(fe.features_path("mast_public_test", 1, ws["tmp"] / "g", "unit"))
+    assert sorted(p.name for p in path.parent.glob("*.parquet")) == ["mast_public_test.parquet"]
+    assert {s: _sha256(fe.features_path(s, 1, out)) for s in dataset.DATA_SPLITS} == stored
+    assert _sha256(reports / "v1" / "scaler.json") == scaler and not (reports / "v1_unit" / "scaler.json").exists()
+    assert (reports / "v1_unit" / "layout_clearance.csv").is_file()
+    record = json.loads((path.parent / "build.json").read_text())
+    assert record["variant"] == "unit" and record["coil_models"]["MAST"] == "unit" and "variant build" in record["scaler"]["note"]
+    assert fe.build_coil_model(path.parent, "MAST") == "unit"
+
+    # Only the features that read the coil currents change: every other column is identical, the
+    # coil points move, and the solenoid flux spent (linear in the solenoid scale) doubles exactly.
+    config = fe.FeatureConfig.load()
+    a, b = fe.read_features("mast_public_test", 1, root=out), fe.read_features("mast_public_test", 1, root=out, variant="unit")
+    reads = fe.feature_reads(config, "MAST")
+    for c, spec in config.column_specs().items():
+        if "sol__mean" not in reads[spec.name]:
+            assert np.array_equal(a[c].to_numpy(), b[c].to_numpy(), equal_nan=True), c
+    assert not np.allclose(a[config.columns_of("coil_pt")].to_numpy(), b[config.columns_of("coil_pt")].to_numpy())
+    np.testing.assert_array_equal(b["ohmic_flux_used"].to_numpy(), 2.0 * a["ohmic_flux_used"].to_numpy())
+
+    # A rebuild of the version's folder under another MAST model stops and leaves it as it was.
+    result = _run(ws, out, reports, "--splits", "mast_public_test", "--coil-model", "MAST=unit")
+    assert result.returncode != 0 and "was built with the MAST coil model 'sol_half'" in result.stderr
+    assert _sha256(fe.features_path("mast_public_test", 1, out)) == stored["mast_public_test"]
+    result = _run(ws, out, reports, "--coil-model", "MAST=solenoid_flat")
+    assert result.returncode != 0 and "no model 'solenoid_flat' on MAST" in result.stderr

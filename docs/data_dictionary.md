@@ -308,6 +308,17 @@ of its rectangle pattern. The record is `fusion_eq/resources/coil_scales_d3d.jso
 (`fusion_eq.coil_flux.CoilScales`), applied by `coil_flux` by default. MAST has no fitted
 record: every scale 1 and no flat term.
 
+Named coil models, 15 October 2026 (`fusion_eq.coil_flux.COIL_MODELS`): DIII-D `solenoid_flat`
+(the record above); MAST `sol_half`, the default, and `unit`. `magnetics_sol_current` is the
+solenoid feed current; the solenoid is wound two-in-hand, so each of the 656 elements is one
+conductor of a two-conductor turn and carries half of it (`sol_half`: solenoid scale 0.5, P-coils
+1, no flat term; `fusion_eq/resources/coil_scales_mast.json`). Evidence, label-free:
+`reports/coil_flux/mast_solenoid_check.md`. `unit` (every element at the full feed current) is
+the model of every MAST feature build and submission before 15 October 2026, including the
+version-2 MAST features. Every feature build records its coil model per machine
+(`build.json`: `coil_models`, and the name in `resources.<machine>.coil_model`); the
+prediction chain uses the model the features were built with.
+
 ## 5. Where the README and the data disagree
 
 Contradictions are recorded with evidence and left unresolved.

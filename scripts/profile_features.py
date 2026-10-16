@@ -131,16 +131,21 @@ def k9_medians(path: Path) -> tuple[dict, str]:
 # -------------------------------------------------------------------------------- checks
 def check_x1(build: dict, config: fe.FeatureConfig, data: dict[str, pd.DataFrame]) -> tuple[fc.Check, dict]:
     counts = build.get("counts", {})
-    same_config = build.get("config_hash") == config.hash()
+    same_hash = build.get("config_hash") == config.hash()
+    # Sets are read by the model phase only: a configuration that differs from the build's in its
+    # sets alone has the same build inputs.
+    same_config = same_hash or fe.same_build_inputs(config, build.get("config"))
     record_ok = bool(counts) and all(c.get("x1_rows_match") for c in counts.values())
     splits_built = sorted(counts) == sorted(dataset.DATA_SPLITS)
     status = "pass" if record_ok and same_config and splits_built else "fail"
     rows = {s: len(data[s]) for s in dataset.DATA_SPLITS}
+    state = ("unchanged since the build" if same_hash else
+             "changed since the build in its sets only" if same_config else "changed since the build")
     summary = (f"rows and keys equal the frame table on every split ({', '.join(f'{s} {n}' for s, n in rows.items())}); "
-               f"build record {'matches' if record_ok else 'does not match'}; configuration "
-               f"{'unchanged since the build' if same_config else 'changed since the build'}")
+               f"build record {'matches' if record_ok else 'does not match'}; configuration {state}")
     return fc.Check("X1", "Rows and keys", status, summary), {"rows": rows, "build_counts": counts,
-                                                             "config_hash_matches": same_config}
+                                                             "config_hash_matches": same_hash,
+                                                             "build_inputs_match": same_config}
 
 
 def check_x2(build: dict, config: fe.FeatureConfig) -> tuple[fc.Check, dict]:
